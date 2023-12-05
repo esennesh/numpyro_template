@@ -1,7 +1,7 @@
 import argparse
 import collections
-import torch
-import numpy as np
+from numpyro import optim
+
 import data_loader.data_loaders as module_data
 import model.loss as module_loss
 import model.metric as module_metric
@@ -12,10 +12,6 @@ from trainer import Trainer
 
 # fix random seeds for reproducibility
 SEED = 123
-torch.manual_seed(SEED)
-torch.backends.cudnn.deterministic = True
-torch.backends.cudnn.benchmark = False
-np.random.seed(SEED)
 
 def main(config):
     logger = config.get_logger('train')
@@ -28,17 +24,11 @@ def main(config):
     model = config.init_obj('arch', module_arch)
     logger.info(model)
 
-    # get function handles of loss and metrics
-    criterion = getattr(module_loss, config['loss'])
-    metrics = [getattr(module_metric, met) for met in config['metrics']]
-
     # build optimizer, learning rate scheduler. delete every lines containing lr_scheduler for disabling scheduler
-    trainable_params = filter(lambda p: p.requires_grad, model.parameters())
-    optimizer = config.init_obj('optimizer', torch.optim, trainable_params)
+    optimizer = config.init_obj('optimizer', optim)
+    lr_scheduler = config.init_obj('lr_scheduler', optim.lr_scheduler, optimizer)
 
-    lr_scheduler = config.init_obj('lr_scheduler', torch.optim.lr_scheduler, optimizer)
-
-    trainer = Trainer(model, criterion, metrics, optimizer,
+    trainer = Trainer(model, optimizer,
                       config=config,
                       data_loader=data_loader,
                       valid_data_loader=valid_data_loader,
