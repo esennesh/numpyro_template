@@ -24,10 +24,6 @@
             "amsgrad": true
         }
     },
-    "loss": "nll_loss",
-    "metrics": [
-        "accuracy", "top_k_acc"
-    ],
     "lr_scheduler": {
         "type": "StepLR",
         "args": {
@@ -41,7 +37,7 @@
         "save_dir": "saved/",
         "save_period": 1,
         "verbosity": 2,
-        
+
         "monitor": "min val_loss",
         "early_stop": 10,
 
