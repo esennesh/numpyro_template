@@ -1,19 +1,21 @@
-import numpy as np
-from pyro.infer import SVI, JitTraceGraph_ELBO, TraceGraph_ELBO
-import torch
-from torchvision.utils import make_grid
+from jax import jit, random
+from jax.random import PRNGKey
+from numpyro.infer import SVI, Trace_ELBO
 from base import BaseTrainer
 from utils import inf_loop, MetricTracker
 
+@jit
+def binarize(rng_key, batch):
+    return random.bernoulli(rng_key, batch).astype(batch.dtype)
 
 class Trainer(BaseTrainer):
     """
     Trainer class
     """
-    def __init__(self, model, criterion, metric_ftns, optimizer, config, data_loader,
+    def __init__(self, callables, rng_seed, optimizer, config, data_loader,
                  valid_data_loader=None, lr_scheduler=None, len_epoch=None,
-                 num_particles=4, jit=False):
-        super().__init__(model, criterion, metric_ftns, optimizer, config)
+                 num_particles=4):
+        super().__init__(callables, optimizer, config)
         self.config = config
         self.data_loader = data_loader
         if len_epoch is None:
@@ -28,33 +30,31 @@ class Trainer(BaseTrainer):
         self.lr_scheduler = lr_scheduler
         self.log_step = int(np.sqrt(data_loader.batch_size))
         self.num_particles = num_particles
-        self.jit = jit
+        self.svi = SVI(self.callables.model, self.callables.guide,
+                       self.optimizer, Trace_ELBO())
+
+        self.rng, self.rng_data, rng_svi = random.split(PRNGKey(rng_seed), 3)
+        self.svi_state = svi.init(rng_svi, sample_batch)
 
         self.train_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
         self.valid_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
 
-    def _train_epoch(self, epoch):
+    def _train_epoch(self, epoch, val):
         """
         Training logic for an epoch
 
         :param epoch: Integer, current training epoch.
         :return: A log that contains average loss and metric in this epoch.
         """
-        if self.jit:
-            elbo = JitTraceGraph_ELBO(vectorize_particles=False,
-                                      num_particles=self.num_particles)
-        else:
-            elbo = TraceGraph_ELBO(vectorize_particles=False,
-                                   num_particles=self.num_particles)
-        svi = SVI(self.model.model, self.model.guide, self.optimizer, loss=elbo)
+        loss, svi_state = val
 
-        self.model.train()
         self.train_metrics.reset()
         for batch_idx, (data, target) in enumerate(self.data_loader):
             data, target = data.to(self.device), target.to(self.device)
 
             self.optimizer.zero_grad()
-            loss = svi.step(observations=data)
+            svi_state, batch_loss = svi.update(svi_state, batch)
+            loss += batch_loss
 
             self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
             self.train_metrics.update('loss', loss.item())
@@ -87,15 +87,7 @@ class Trainer(BaseTrainer):
         :param epoch: Integer, current training epoch.
         :return: A log that contains information about validation
         """
-        if self.jit:
-            elbo = JitTraceGraph_ELBO(vectorize_particles=False,
-                                      num_particles=self.num_particles)
-        else:
-            elbo = TraceGraph_ELBO(vectorize_particles=False,
-                                   num_particles=self.num_particles)
-        svi = SVI(self.model.model, self.model.guide, self.optimizer, loss=elbo)
 
-        self.model.eval()
         self.valid_metrics.reset()
         with torch.no_grad():
             for batch_idx, (data, target) in enumerate(self.valid_data_loader):
