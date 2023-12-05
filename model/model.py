@@ -1,9 +1,10 @@
-import pyro
-import pyro.distributions as dist
-import torch.nn as nn
-import torch.nn.functional as F
-from base import BaseModel
+from jax import jit, lax, random
+from jax.example_libraries import stax
+import jax.numpy as jnp
+from jax.random import PRNGKey
 
+import numpyro
+import numpyro.distributions as dist
 
 class MnistModel(BaseModel):
     def __init__(self, num_classes=10):
