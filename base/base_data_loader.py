@@ -1,14 +1,16 @@
 import numpy as np
+from jax.tree_util import tree_map
 from torch.utils.data import DataLoader
-from torch.utils.data.dataloader import default_collate
 from torch.utils.data.sampler import SubsetRandomSampler
 
+def numpy_collate(batch):
+  return tree_map(np.asarray, data.default_collate(batch))
 
 class BaseDataLoader(DataLoader):
     """
     Base class for all data loaders
     """
-    def __init__(self, dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=default_collate):
+    def __init__(self, dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=numpy_collate):
         self.validation_split = validation_split
         self.shuffle = shuffle
 
