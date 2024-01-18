@@ -1,3 +1,5 @@
+from jax import jit, random
+import jax.numpy as jnp
 import numpy as np
 from torchvision import datasets
 from base import BaseDataLoader
@@ -14,3 +16,7 @@ class MnistDataLoader(BaseDataLoader):
         self.data_dir = data_dir
         self.dataset = datasets.MNIST(self.data_dir, train=training, download=True, transform=FlattenAndCast())
         super().__init__(self.dataset, batch_size, shuffle, validation_split, num_workers)
+
+@jit
+def binarize(rng_key, batch):
+    return random.bernoulli(rng_key, batch).astype(batch.dtype)
