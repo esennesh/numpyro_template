@@ -12,6 +12,7 @@ from trainer import Trainer
 
 # fix random seeds for reproducibility
 SEED = 123
+InferenceProg = collections.namedtuple("InferenceProg", ["model", "guide"])
 
 def main(config):
     logger = config.get_logger('train')
@@ -21,18 +22,17 @@ def main(config):
     valid_data_loader = data_loader.split_validation()
 
     # build model architecture, then print to console
-    model = config.init_obj('arch', module_arch)
-    logger.info(model)
+    model = config.init_ftn('model', module_arch)
+    guide = config.init_ftn('guide', module_arch)
 
     # build optimizer, learning rate scheduler. delete every lines containing lr_scheduler for disabling scheduler
     optimizer = config.init_obj('optimizer', optim)
-    lr_scheduler = config.init_obj('lr_scheduler', optim.lr_scheduler, optimizer)
+    # lr_scheduler = config.init_obj('lr_scheduler', optim.lr_scheduler, optimizer)
 
-    trainer = Trainer(model, optimizer,
+    trainer = Trainer(InferenceProg(model, guide), 0, optimizer,
                       config=config,
                       data_loader=data_loader,
-                      valid_data_loader=valid_data_loader,
-                      lr_scheduler=lr_scheduler)
+                      valid_data_loader=valid_data_loader)
 
     trainer.train()
 

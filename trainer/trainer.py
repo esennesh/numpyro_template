@@ -1,8 +1,12 @@
+import itertools
 from jax import jit, random
+import jax.numpy as jnp
 from jax.random import PRNGKey
+import numpy as np
 from numpyro.infer import SVI, Trace_ELBO
 from base import BaseTrainer
-from utils import inf_loop, MetricTracker
+from data_loader.data_loaders import binarize
+from utils import flatten, inf_loop, MetricTracker
 
 @jit
 def binarize(rng_key, batch):
@@ -15,7 +19,7 @@ class Trainer(BaseTrainer):
     def __init__(self, callables, rng_seed, optimizer, config, data_loader,
                  valid_data_loader=None, lr_scheduler=None, len_epoch=None,
                  num_particles=4):
-        super().__init__(callables, optimizer, config)
+        super().__init__(callables, [], optimizer, config)
         self.config = config
         self.data_loader = data_loader
         if len_epoch is None:
@@ -28,33 +32,34 @@ class Trainer(BaseTrainer):
         self.valid_data_loader = valid_data_loader
         self.do_validation = self.valid_data_loader is not None
         self.lr_scheduler = lr_scheduler
-        self.log_step = int(np.sqrt(data_loader.batch_size))
+        self.log_step = int(jnp.sqrt(data_loader.batch_size))
         self.num_particles = num_particles
         self.svi = SVI(self.callables.model, self.callables.guide,
                        self.optimizer, Trace_ELBO())
 
-        self.rng, self.rng_data, rng_svi = random.split(PRNGKey(rng_seed), 3)
-        self.svi_state = svi.init(rng_svi, sample_batch)
+        self.rng, rng_svi = random.split(PRNGKey(rng_seed), 2)
+        self.svi = SVI(self.callables.model, self.callables.guide,
+                       self.optimizer, Trace_ELBO())
+        for (data, _) in self.data_loader:
+            init_batch = data
+            break
+        self.svi_state = self.svi.init(rng_svi, binarize(self.rng, init_batch))
 
         self.train_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
         self.valid_metrics = MetricTracker('loss', *[m.__name__ for m in self.metric_ftns], writer=self.writer)
 
-    def _train_epoch(self, epoch, val):
+    def _train_epoch(self, epoch):
         """
         Training logic for an epoch
 
         :param epoch: Integer, current training epoch.
         :return: A log that contains average loss and metric in this epoch.
         """
-        loss, svi_state = val
-
         self.train_metrics.reset()
         for batch_idx, (data, target) in enumerate(self.data_loader):
-            data, target = data.to(self.device), target.to(self.device)
-
-            self.optimizer.zero_grad()
-            svi_state, batch_loss = svi.update(svi_state, batch)
-            loss += batch_loss
+            self.rng, rng_binarize = random.split(random.fold_in(self.rng, batch_idx))
+            data = binarize(rng_binarize, data)
+            self.svi_state, loss = self.svi.update(self.svi_state, data)
 
             self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
             self.train_metrics.update('loss', loss.item())
@@ -66,7 +71,6 @@ class Trainer(BaseTrainer):
                     epoch,
                     self._progress(batch_idx),
                     loss.item()))
-                self.writer.add_image('input', make_grid(data.cpu(), nrow=8, normalize=True))
 
             if batch_idx == self.len_epoch:
                 break
@@ -89,20 +93,22 @@ class Trainer(BaseTrainer):
         """
 
         self.valid_metrics.reset()
-        with torch.no_grad():
-            for batch_idx, (data, target) in enumerate(self.valid_data_loader):
-                data, target = data.to(self.device), target.to(self.device)
-                loss = svi.evaluate_loss(observations=data)
+        for batch_idx, (data, target) in enumerate(self.valid_data_loader):
+            self.rng, rng_binarize = random.split(random.fold_in(self.rng, batch_idx))
+            data = binarize(rng_binarize, data)
+            loss = self.svi.evaluate(self.svi_state, data)
 
-                self.writer.set_step((epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
-                self.valid_metrics.update('loss', loss.item())
-                for met in self.metric_ftns:
-                    self.valid_metrics.update(met.__name__, met(target))
-                self.writer.add_image('input', make_grid(data.cpu(), nrow=8, normalize=True))
+            self.writer.set_step((epoch - 1) * len(self.valid_data_loader) + batch_idx, 'valid')
+            self.valid_metrics.update('loss', loss.item())
+            for met in self.metric_ftns:
+                self.valid_metrics.update(met.__name__, met(target))
 
-        # add histogram of model parameters to the tensorboard
-        for name, p in self.model.named_parameters():
-            self.writer.add_histogram(name, p, bins='auto')
+        # # add histogram of model and guide parameters to the tensorboard
+        parameters = self.optimizer.get_params(self.svi_state.optim_state)
+        for name in parameters:
+            for p, par in enumerate(flatten(parameters[name])):
+                self.writer.add_histogram(name + "$" + str(p), np.asarray(par),
+                                          bins='auto')
         return self.valid_metrics.result()
 
     def _progress(self, batch_idx):

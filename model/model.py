@@ -25,7 +25,7 @@ def decoder(hidden_dim, out_dim):
         stax.Sigmoid,
     )
 
-def model(batch, hidden_dim=400, z_dim=100):
+def mnist_model(batch, hidden_dim=400, z_dim=100):
     batch = jnp.reshape(batch, (batch.shape[0], -1))
     batch_dim, out_dim = jnp.shape(batch)
     decode = numpyro.module("decoder", decoder(hidden_dim, out_dim), (batch_dim, z_dim))
@@ -34,7 +34,7 @@ def model(batch, hidden_dim=400, z_dim=100):
         img_loc = decode(z)
         return numpyro.sample("obs", dist.Bernoulli(img_loc).to_event(1), obs=batch)
 
-def guide(batch, hidden_dim=400, z_dim=100):
+def mnist_guide(batch, hidden_dim=400, z_dim=100):
     batch = jnp.reshape(batch, (batch.shape[0], -1))
     batch_dim, out_dim = jnp.shape(batch)
     encode = numpyro.module("encoder", encoder(hidden_dim, z_dim), (batch_dim, out_dim))
