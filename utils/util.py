@@ -4,6 +4,12 @@ from pathlib import Path
 from itertools import repeat
 from collections import OrderedDict
 
+def flatten(seq):
+    for elem in seq:
+        if isinstance(elem, (list, tuple)):
+            yield from flatten(elem)
+        else:
+            yield elem
 
 def ensure_dir(dirname):
     dirname = Path(dirname)
