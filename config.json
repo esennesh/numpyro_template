@@ -1,16 +1,25 @@
 {
-    "name": "Mnist_LeNet",
-    "n_gpu": 1,
+    "name": "Mnist_Vae",
 
-    "arch": {
-        "type": "MnistModel",
-        "args": {}
+    "model": {
+        "type": "mnist_model",
+        "args": {
+          "hidden_dim": 400,
+          "z_dim": 10
+        }
+    },
+    "guide": {
+        "type": "mnist_guide",
+        "args": {
+          "hidden_dim": 400,
+          "z_dim": 10
+        }
     },
     "data_loader": {
         "type": "MnistDataLoader",
         "args":{
             "data_dir": "data/",
-            "batch_size": 128,
+            "batch_size": 256,
             "shuffle": true,
             "validation_split": 0.1,
             "num_workers": 2
@@ -19,15 +28,9 @@
     "optimizer": {
         "type": "Adam",
         "args":{
-            "lr": 0.001,
-            "weight_decay": 0,
-            "amsgrad": true
+            "step_size": 0.001
         }
     },
-    "loss": "nll_loss",
-    "metrics": [
-        "accuracy", "top_k_acc"
-    ],
     "lr_scheduler": {
         "type": "StepLR",
         "args": {
@@ -41,7 +44,7 @@
         "save_dir": "saved/",
         "save_period": 1,
         "verbosity": 2,
-        
+
         "monitor": "min val_loss",
         "early_stop": 10,
 
