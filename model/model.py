@@ -6,6 +6,23 @@ from jax.random import PRNGKey
 import numpyro
 import numpyro.distributions as dist
 
+def affine_grid(thetas, size):
+    N, C, H, W = size
+
+    xs, ys = jnp.meshgrid(jnp.arange(W), jnp.arange(H))
+    xs, ys = 2 * xs / W - 0.5, 2 * ys / H - 0.5
+    xs, ys = xs[:, jnp.newaxis], ys[:, jnp.newaxis]
+    ones = jnp.ones_like(xs)
+    grids = jnp.concatenate((xs, ys, ones), axis=-1)
+    grids = jnp.expand_dims(jnp.reshape(grids, (-1, 3, 1)), 0)
+    grids = jnp.tile(grids, (N, 1, 1, 1)).squeeze(axis=-1)
+
+    transforms = jnp.reshape(thetas, (-1, 2, 3))
+    grids = jnp.matmul(transforms, jnp.matrix_transpose(grids))
+    # transform grid range from [-1,1) to the range of [0,1)
+    grids = (jnp.matrix_transpose(grids) + 1) / 2
+    return jnp.multiply(grids, [W, H])
+
 def encoder(hidden_dim, z_dim):
     return stax.serial(
         stax.Dense(hidden_dim, W_init=stax.randn()),
