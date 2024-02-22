@@ -1,12 +1,13 @@
 from jax import jit, random
 import jax.numpy as jnp
 import numpy as np
+from torch.utils.data import Dataset
 from torchvision import datasets
 from base import BaseDataLoader
 
 class FlattenAndCast(object):
-  def __call__(self, pic):
-    return np.ravel(np.array(pic, dtype=jnp.float32))
+    def __call__(self, pic):
+        return np.ravel(np.array(pic, dtype=jnp.float32))
 
 class MnistDataLoader(BaseDataLoader):
     """
