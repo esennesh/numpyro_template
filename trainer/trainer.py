@@ -40,7 +40,7 @@ class Trainer(BaseTrainer):
         self.rng, rng_svi = random.split(PRNGKey(rng_seed), 2)
         self.svi = SVI(self.callables.model, self.callables.guide,
                        self.optimizer, Trace_ELBO())
-        for (data, _) in self.data_loader:
+        for (data, _, _) in self.data_loader:
             init_batch = data
             break
         self.svi_state = self.svi.init(rng_svi, binarize(self.rng, init_batch))
@@ -56,7 +56,7 @@ class Trainer(BaseTrainer):
         :return: A log that contains average loss and metric in this epoch.
         """
         self.train_metrics.reset()
-        for batch_idx, (data, target) in enumerate(self.data_loader):
+        for batch_idx, (data, target, idx) in enumerate(self.data_loader):
             self.rng, rng_binarize = random.split(random.fold_in(self.rng, batch_idx))
             data = binarize(rng_binarize, data)
             self.svi_state, loss = self.svi.update(self.svi_state, data)
@@ -93,7 +93,7 @@ class Trainer(BaseTrainer):
         """
 
         self.valid_metrics.reset()
-        for batch_idx, (data, target) in enumerate(self.valid_data_loader):
+        for batch_idx, (data, target, idx) in enumerate(self.valid_data_loader):
             self.rng, rng_binarize = random.split(random.fold_in(self.rng, batch_idx))
             data = binarize(rng_binarize, data)
             loss = self.svi.evaluate(self.svi_state, data)
