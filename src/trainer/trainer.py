@@ -1,3 +1,4 @@
+from functools import partial
 import itertools
 from jax import jit, random
 import jax.numpy as jnp
@@ -59,7 +60,7 @@ class Trainer(BaseTrainer):
         for batch_idx, (data, target, idx) in enumerate(self.data_loader):
             self.rng, rng_binarize = random.split(random.fold_in(self.rng, batch_idx))
             data = binarize(rng_binarize, data)
-            self.svi_state, loss = self.svi.update(self.svi_state, data)
+            self.svi_state, loss = self._train_step(self.svi_state, data)
 
             self.writer.set_step((epoch - 1) * self.len_epoch + batch_idx)
             self.train_metrics.update('loss', loss.item())
@@ -83,6 +84,10 @@ class Trainer(BaseTrainer):
         if self.lr_scheduler is not None:
             self.lr_scheduler.step()
         return log
+
+    @partial(jit, static_argnums=0)
+    def _train_step(self, state, data):
+        return self.svi.update(state, data)
 
     def _valid_epoch(self, epoch):
         """
