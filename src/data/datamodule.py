@@ -1,63 +1,63 @@
+from abc import abstractmethod, abstractproperty
 import numpy as np
 from jax.tree_util import tree_map
-from torch.utils.data import default_collate, DataLoader
-from torch.utils.data.sampler import SubsetRandomSampler
+from torch.utils.data import Dataset, DataLoader, default_collate, random_split
+from typing import Tuple
 
 def numpy_collate(batch):
   return tree_map(np.asarray, default_collate(batch))
 
-class BaseDataLoader(DataLoader):
+class DataModule:
     """
-    Base class for all data loaders
+    Base class for all data modules
     """
-    def __init__(self, dataset, batch_size, shuffle, validation_split, num_workers, collate_fn=numpy_collate):
+    def __init__(self, batch_size: int=64, data_dir: str="data/",
+                 collate_fn=numpy_collate, num_workers: int=1,
+                 pin_memory: bool=False, shuffle: bool=True,
+                 validation_split: float=0.1):
+        self.data_dir = data_dir
         self.validation_split = validation_split
-        self.shuffle = shuffle
+        self.data_train, self.data_val, self.data_test =\
+            self.setup(*self.prepare_data(), validation_split)
 
-        self.batch_idx = 0
-        self.n_samples = len(dataset)
-
-        self.sampler, self.valid_sampler = self._split_sampler(self.validation_split)
-
-        self.init_kwargs = {
-            'dataset': dataset,
+        self.dataloader_kwargs = {
             'batch_size': batch_size,
-            'shuffle': self.shuffle,
             'collate_fn': collate_fn,
-            'num_workers': num_workers
+            'num_workers': num_workers,
+            'pin_memory': pin_memory,
+            'shuffle': shuffle,
         }
-        super().__init__(sampler=self.sampler, **self.init_kwargs)
 
-    def _split_sampler(self, split):
-        if split == 0.0:
-            return None, None
+    @abstractmethod
+    def prepare_data(self) -> Tuple[Dataset, Dataset]:
+        raise NotImplementedError
 
-        idx_full = np.arange(self.n_samples)
+    @staticmethod
+    def setup(train_data, test_data, validation_split) -> Tuple[Dataset, Dataset, Dataset]:
+        val_length = int(len(train_data) * validation_split)
+        train_val_split = (len(train_data) - val_length, val_length)
+        train_data, val_data = random_split(dataset=train_data,
+                                            lengths=train_val_split)
+        return train_data, val_data, test_data
 
-        np.random.seed(0)
-        np.random.shuffle(idx_full)
+    @abstractproperty
+    def shape(self) -> Tuple:
+        raise NotImplementedError
 
-        if isinstance(split, int):
-            assert split > 0
-            assert split < self.n_samples, "validation set size is configured to be larger than entire dataset."
-            len_valid = split
-        else:
-            len_valid = int(self.n_samples * split)
+    def test_dataloader(self) -> DataLoader:
+        return DataLoader(
+            dataset=self.data_test,
+            **self.dataloader_kwargs,
+        )
 
-        valid_idx = idx_full[0:len_valid]
-        train_idx = np.delete(idx_full, np.arange(0, len_valid))
+    def train_dataloader(self) -> DataLoader:
+        return DataLoader(
+            dataset=self.data_train,
+            **self.dataloader_kwargs,
+        )
 
-        train_sampler = SubsetRandomSampler(train_idx)
-        valid_sampler = SubsetRandomSampler(valid_idx)
-
-        # turn off shuffle option which is mutually exclusive with sampler
-        self.shuffle = False
-        self.n_samples = len(train_idx)
-
-        return train_sampler, valid_sampler
-
-    def split_validation(self):
-        if self.valid_sampler is None:
-            return None
-        else:
-            return DataLoader(sampler=self.valid_sampler, **self.init_kwargs)
+    def valid_dataloader(self) -> DataLoader:
+        return DataLoader(
+            dataset=self.data_train,
+            **self.dataloader_kwargs,
+        )
