@@ -1,0 +1,16 @@
+defaults:
+  - _self_
+  - data: mnist
+  - guide: vae
+  - model: vae
+  - trainer: default
+  - paths: default
+  - extras: default
+  - hydra: default
+
+task_name: "train"
+tags: ["dev"]
+train: True
+test: True
+ckpt_path: null
+seed: 1234
