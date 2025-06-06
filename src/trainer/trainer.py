@@ -6,7 +6,6 @@ from jax.random import PRNGKey
 import numpy as np
 from numpyro.infer import SVI, Trace_ELBO
 from base import BaseTrainer
-from data_loader.data_loaders import binarize
 from utils import flatten, inf_loop, MetricTracker
 
 @jit
