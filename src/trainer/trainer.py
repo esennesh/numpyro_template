@@ -79,7 +79,7 @@ class Trainer:
         """
         resume_path = str(resume_path)
         self.logger.info("Loading checkpoint: {}.npy ...".format(resume_path))
-        checkpoint = np.load(resume_path)
+        checkpoint = np.load(resume_path, allow_pickle=True).item()
         self.epoch = checkpoint['epoch'] + 1
         self.monitor_best = checkpoint['monitor_best']
 
@@ -137,6 +137,9 @@ class Trainer:
 
     def test(self, monad: ParaMonad, datamodule: DataModule,
              ckpt_path: Optional[str]=None, valid: bool=True):
+        if ckpt_path is not None:
+            self._resume_checkpoint(monad, ckpt_path)
+
         dataloader = datamodule.valid_dataloader() if valid else\
                      datamodule.test_dataloader()
         metrics = defaultdict(lambda: [])
@@ -150,6 +153,9 @@ class Trainer:
         """
         Full training logic
         """
+        if ckpt_path is not None:
+            self._resume_checkpoint(monad, ckpt_path)
+
         not_improved_count = 0
         train_dataloader = datamodule.train_dataloader()
         valid_dataloader = datamodule.valid_dataloader()
