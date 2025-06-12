@@ -101,9 +101,10 @@ ENV/
 .mypy_cache/
 
 # input data, saved log, checkpoints
-data/
+/data/
 input/
-saved/
+/saved/
+/logs/
 datasets/
 
 # editor, os cache directory
