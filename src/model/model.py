@@ -1,7 +1,6 @@
-from jax import jit, lax, random
+from jax import jit, lax
 from jax.example_libraries import stax
 import jax.numpy as jnp
-from jax.random import PRNGKey
 
 import numpyro
 import numpyro.distributions as dist
@@ -41,7 +40,3 @@ def mnist_guide(batch, hidden_dim=400, z_dim=100):
     z_loc, z_std = encode(batch)
     with numpyro.plate("batch", batch_dim):
         return numpyro.sample("z", dist.Normal(z_loc, z_std).to_event(1))
-
-@jit
-def binarize(rng_key, batch):
-    return random.bernoulli(rng_key, batch).astype(batch.dtype)

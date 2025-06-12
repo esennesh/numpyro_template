@@ -1,0 +1,4 @@
+_target_: src.model.model.mnist_guide
+_partial_: true
+hidden_dim: 400
+z_dim: 100
