@@ -6,11 +6,12 @@ import math
 import numpy as np
 from numpyro.infer import SVI
 import os
+from rich.progress import track
 from typing import Callable, List, Optional
 
-from data import DataModule
-from logger import TensorboardWriter
-from utils import flatten, inf_loop, MetricTracker
+from src.data import DataModule
+from src.logger import TensorboardWriter
+from src.utils import flatten, inf_loop, MetricTracker
 from .para import ParaMonad
 
 def _progress(batch_idx, data_loader):

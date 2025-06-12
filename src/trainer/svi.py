@@ -6,7 +6,7 @@ from numpyro.infer import SVI, Trace_ELBO
 from numpyro import optim
 from typing import Any, Dict
 
-from trainer.para import ParaMonad
+from .para import ParaMonad
 
 class SviPara(ParaMonad):
     def __init__(self, data_shape, guide, lr, model, num_particles, rng):

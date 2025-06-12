@@ -4,17 +4,13 @@ import hydra
 import logging
 from numpyro import optim
 from omegaconf import DictConfig
+import os
 import rootutils
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from base import BaseTrainer
-from data.datamodule import DataModule
-import model.loss as module_loss
-import model.metric as module_metric
-import model.model as module_arch
-from parse_config import ConfigParser
-from trainer import ParaMonad, Trainer
-from utils import extras, get_metric_value, task_wrapper
+from .data.datamodule import DataModule
+from .trainer import ParaMonad, Trainer
+from .utils import extras, get_metric_value, task_wrapper
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #
