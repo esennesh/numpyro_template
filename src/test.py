@@ -1,81 +1,96 @@
 import argparse
-import torch
-from tqdm import tqdm
-import data_loader.data_loaders as module_data
-import model.loss as module_loss
-import model.metric as module_metric
-import model.model as module_arch
-from parse_config import ConfigParser
+import collections
+import hydra
+import logging
+from numpyro import optim
+from omegaconf import DictConfig
+import os
+import rootutils
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
+from .data.datamodule import DataModule
+from .trainer import ParaMonad, Trainer
+from .utils import extras, get_metric_value, task_wrapper
 
-def main(config):
-    logger = config.get_logger('test')
+rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
+# ------------------------------------------------------------------------------------ #
+# the setup_root above is equivalent to:
+# - adding project root dir to PYTHONPATH
+#       (so you don't need to force user to install project as a package)
+#       (necessary before importing any local modules e.g. `from src import utils`)
+# - setting up PROJECT_ROOT environment variable
+#       (which is used as a base for paths in "configs/paths/default.yaml")
+#       (this way all filepaths are the same no matter where you run the code)
+# - loading environment variables from ".env" in root dir
+#
+# you can remove it if you:
+# 1. either install project as a package or move entry files to project root dir
+# 2. set `root_dir` to "." in "configs/paths/default.yaml"
+#
+# more info: https://github.com/ashleve/rootutils
+# ------------------------------------------------------------------------------------ #
 
-    # setup data_loader instances
-    data_loader = getattr(module_data, config['data_loader']['type'])(
-        config['data_loader']['args']['data_dir'],
-        batch_size=512,
-        shuffle=False,
-        validation_split=0.0,
-        training=False,
-        num_workers=2
+log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
+
+@task_wrapper
+def test(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    log.info(f"Instantiating datamodule <{cfg.data._target_}>")
+    datamodule: DataModule = hydra.utils.instantiate(cfg.data)
+
+    log.info(f"Instantiating generative model <{cfg.model._target_}>")
+    model: Callable = hydra.utils.instantiate(cfg.model)
+    log.info(f"Instantiating guide inference program <{cfg.guide._target_}>")
+    guide: Callable = hydra.utils.instantiate(cfg.guide)
+
+    log.info(f"Instantiating trainable module <{cfg.monad._target_}>")
+    monad: ParaMonad = hydra.utils.instantiate(cfg.monad,
+                                               data_shape=datamodule.shape,
+                                               guide=guide, model=model)
+
+    log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
+    trainer: BaseTrainer = hydra.utils.instantiate(cfg.trainer, logger=log)
+
+    object_dict = {
+        "cfg": cfg,
+        "datamodule": datamodule,
+        "monad": monad,
+        "trainer": trainer,
+    }
+
+    log.info("Starting testing!")
+    if cfg.ckpt_path == "" or not os.path.exists(cfg.ckpt_path):
+        log.warning("Best ckpt not found! Using current weights for testing...")
+        cfg.ckpt_path = None
+    test_metrics = trainer.test(monad, datamodule, ckpt_path=cfg.ckpt_path)
+    log.info(f"Tested from ckpt path: {cfg.ckpt_path}")
+
+    # merge train and test metrics
+    metric_dict = {**test_metrics}
+
+    return metric_dict, object_dict
+
+@hydra.main(version_base="1.3", config_path="../configs", config_name="eval.yaml")
+def main(cfg: DictConfig) -> Optional[float]:
+    """Main entry point for testing.
+
+    :param cfg: DictConfig configuration composed by Hydra.
+    :return: Optional[float] with optimized metric value.
+    """
+    # apply extra utilities
+    # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
+    extras(cfg)
+
+    # train the model
+    metric_dict, _ = test(cfg)
+
+    # safely retrieve metric value for hydra-based hyperparameter optimization
+    metric_value = get_metric_value(
+        metric_dict=metric_dict, metric_name=cfg.get("optimized_metric")
     )
 
-    # build model architecture
-    model = config.init_obj('arch', module_arch)
-    logger.info(model)
-
-    # get function handles of loss and metrics
-    loss_fn = getattr(module_loss, config['loss'])
-    metric_fns = [getattr(module_metric, met) for met in config['metrics']]
-
-    logger.info('Loading checkpoint: {} ...'.format(config.resume))
-    checkpoint = torch.load(config.resume)
-    state_dict = checkpoint['state_dict']
-    if config['n_gpu'] > 1:
-        model = torch.nn.DataParallel(model)
-    model.load_state_dict(state_dict)
-
-    # prepare model for testing
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = model.to(device)
-    model.eval()
-
-    total_loss = 0.0
-    total_metrics = torch.zeros(len(metric_fns))
-
-    with torch.no_grad():
-        for i, (data, target) in enumerate(tqdm(data_loader)):
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-
-            #
-            # save sample images, or do something with output here
-            #
-
-            # computing loss, metrics on test set
-            loss = loss_fn(output, target)
-            batch_size = data.shape[0]
-            total_loss += loss.item() * batch_size
-            for i, metric in enumerate(metric_fns):
-                total_metrics[i] += metric(output, target) * batch_size
-
-    n_samples = len(data_loader.sampler)
-    log = {'loss': total_loss / n_samples}
-    log.update({
-        met.__name__: total_metrics[i].item() / n_samples for i, met in enumerate(metric_fns)
-    })
-    logger.info(log)
+    # return optimized metric
+    return metric_value
 
 
-if __name__ == '__main__':
-    args = argparse.ArgumentParser(description='PyTorch Template')
-    args.add_argument('-c', '--config', default=None, type=str,
-                      help='config file path (default: None)')
-    args.add_argument('-r', '--resume', default=None, type=str,
-                      help='path to latest checkpoint (default: None)')
-    args.add_argument('-d', '--device', default=None, type=str,
-                      help='indices of GPUs to enable (default: all)')
-
-    config = ConfigParser.from_args(args)
-    main(config)
+if __name__ == "__main__":
+    main()

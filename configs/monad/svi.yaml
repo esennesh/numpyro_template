@@ -1,4 +1,4 @@
-_target_: trainer.SviPara
+_target_: src.trainer.SviPara
 
 lr: 0.001
 num_particles: 4

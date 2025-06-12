@@ -1,4 +1,4 @@
-_target_: trainer.Trainer
+_target_: src.trainer.Trainer
 
 default_root_dir: ${paths.output_dir}
 
