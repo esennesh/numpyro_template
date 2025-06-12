@@ -107,7 +107,6 @@ class Trainer:
         filename = str(self.checkpoint_dir + '/checkpoint-epoch{}'.format(epoch))
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         np.save(filename, state, allow_pickle=True)
-        self.logger.info("Saving checkpoint: {}.npy ...".format(filename))
         if save_best:
             best_path = str(self.checkpoint_dir + '/model_best')
             np.save(best_path, state, allow_pickle=True)
@@ -125,18 +124,14 @@ class Trainer:
         else:
             log_step = self.log_step
         self.train_metrics.reset()
-        for batch_idx, batch in enumerate(data_loader):
+        for batch_idx, batch in track(enumerate(data_loader), description="Training",
+                                      total=len(data_loader), transient=True):
             metrics = monad.train_step(*batch)
             loss = metrics['loss'].item()
 
-            self.writer.set_step((epoch - 1) * len(data_loader) + batch_idx)
+            self.writer.set_step(epoch * len(data_loader) + batch_idx)
             for met in self.metrics:
                 self.train_metrics.update(met, metrics[met])
-
-            if batch_idx % self.log_step == 0:
-                self.logger.info('Train Epoch: {} {} Loss: {:.6f}'.format(
-                    epoch, _progress(batch_idx, data_loader), loss
-                ))
 
         return self.train_metrics.result()
 
@@ -168,10 +163,6 @@ class Trainer:
             log = {'epoch': epoch}
             log.update(**{'train/'+k : v.item() for k, v in train_result.items()})
             log.update(**{'val/'+k : v.item() for k, v in valid_result.items()})
-
-            # print logged informations to the screen
-            for key, value in log.items():
-                self.logger.info('    {:15s}: {}'.format(str(key), value))
 
             # evaluate model performance according to configured metric, save best checkpoint as model_best
             best = False
@@ -210,12 +201,12 @@ class Trainer:
         """
 
         self.valid_metrics.reset()
-        for batch_idx, batch in enumerate(data_loader):
+        for batch_idx, batch in track(enumerate(data_loader), description="Validating",
+                                      total=len(data_loader), transient=True):
             metrics = monad.valid_step(*batch)
             loss = metrics['loss'].item()
 
-            self.writer.set_step((epoch - 1) * len(data_loader) + batch_idx,
-                                 'valid')
+            self.writer.set_step(epoch * len(data_loader) + batch_idx, 'valid')
             for met in self.metrics:
                 self.valid_metrics.update(met, metrics[met])
 
