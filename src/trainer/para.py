@@ -3,6 +3,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 class ParaMonad:
     @abstractmethod
+    def __call__(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @abstractmethod
     def load(self, checkpoint: Dict[str, Any]):
         raise NotImplementedError
 

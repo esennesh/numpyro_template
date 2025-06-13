@@ -2,7 +2,7 @@ from functools import partial
 from jax import Array, jit
 import jax.numpy as jnp
 import jax.random as random
-from numpyro.infer import SVI, Trace_ELBO
+from numpyro.infer import Predictive, SVI, Trace_ELBO
 from numpyro import optim
 from typing import Any, Dict
 
@@ -17,6 +17,14 @@ class SviPara(ParaMonad):
         self.svi = SVI(model, guide, self.optimizer,
                        Trace_ELBO(num_particles))
         self.svi_state = self.svi.init(rng, jnp.zeros((1,) + data_shape))
+
+    def __call__(self, *args, **kwargs):
+        predictive = Predictive(
+            self.svi.model, guide=self.svi.guide,
+            num_samples=self.num_particles, batch_ndims=None, parallel=False,
+            params=self.svi.get_params(self.svi_state)
+        )
+        return predictive(self.svi_state.rng_key, *args, **kwargs)
 
     def load(self, checkpoint: Dict[str, Any]):
         self.svi_state = checkpoint["svi_state"]
