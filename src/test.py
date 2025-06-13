@@ -8,10 +8,6 @@ import os
 import rootutils
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from .data.datamodule import DataModule
-from .trainer import ParaMonad, Trainer
-from .utils import extras, get_metric_value, task_wrapper
-
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #
 # the setup_root above is equivalent to:
@@ -29,6 +25,9 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 #
 # more info: https://github.com/ashleve/rootutils
 # ------------------------------------------------------------------------------------ #
+from src.data.datamodule import DataModule
+from src.trainer import ParaMonad, Trainer
+from src.utils import extras, get_metric_value, task_wrapper
 
 log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
 
