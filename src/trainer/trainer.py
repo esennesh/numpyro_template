@@ -124,7 +124,8 @@ class Trainer:
         else:
             log_step = self.log_step
         self.train_metrics.reset()
-        for batch_idx, batch in track(enumerate(data_loader), description="Training",
+        for batch_idx, batch in track(enumerate(data_loader),
+                                      description="Training (Epoch %d)" % epoch,
                                       total=len(data_loader), transient=True):
             metrics = monad.train_step(*batch)
             loss = metrics['loss'].item()
@@ -207,7 +208,8 @@ class Trainer:
         """
 
         self.valid_metrics.reset()
-        for batch_idx, batch in track(enumerate(data_loader), description="Validating",
+        for batch_idx, batch in track(enumerate(data_loader),
+                                      description="Validating (Epoch %d)" % epoch,
                                       total=len(data_loader), transient=True):
             metrics = monad.valid_step(*batch)
             loss = metrics['loss'].item()
