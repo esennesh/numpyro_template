@@ -6,11 +6,12 @@ import math
 import numpy as np
 from numpyro.infer import SVI
 import os
+from rich.progress import track
 from typing import Callable, List, Optional
 
-from data import DataModule
-from logger import TensorboardWriter
-from utils import flatten, inf_loop, MetricTracker
+from src.data import DataModule
+from src.logger import TensorboardWriter
+from src.utils import flatten, inf_loop, MetricTracker
 from .para import ParaMonad
 
 def _progress(batch_idx, data_loader):
@@ -78,7 +79,7 @@ class Trainer:
         """
         resume_path = str(resume_path)
         self.logger.info("Loading checkpoint: {}.npy ...".format(resume_path))
-        checkpoint = np.load(resume_path)
+        checkpoint = np.load(resume_path, allow_pickle=True).item()
         self.epoch = checkpoint['epoch'] + 1
         self.monitor_best = checkpoint['monitor_best']
 
@@ -106,7 +107,6 @@ class Trainer:
         filename = str(self.checkpoint_dir + '/checkpoint-epoch{}'.format(epoch))
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         np.save(filename, state, allow_pickle=True)
-        self.logger.info("Saving checkpoint: {}.npy ...".format(filename))
         if save_best:
             best_path = str(self.checkpoint_dir + '/model_best')
             np.save(best_path, state, allow_pickle=True)
@@ -124,23 +124,23 @@ class Trainer:
         else:
             log_step = self.log_step
         self.train_metrics.reset()
-        for batch_idx, batch in enumerate(data_loader):
+        for batch_idx, batch in track(enumerate(data_loader),
+                                      description="Training (Epoch %d)" % epoch,
+                                      total=len(data_loader), transient=True):
             metrics = monad.train_step(*batch)
             loss = metrics['loss'].item()
 
-            self.writer.set_step((epoch - 1) * len(data_loader) + batch_idx)
+            self.writer.set_step(epoch * len(data_loader) + batch_idx)
             for met in self.metrics:
                 self.train_metrics.update(met, metrics[met])
-
-            if batch_idx % self.log_step == 0:
-                self.logger.info('Train Epoch: {} {} Loss: {:.6f}'.format(
-                    epoch, _progress(batch_idx, data_loader), loss
-                ))
 
         return self.train_metrics.result()
 
     def test(self, monad: ParaMonad, datamodule: DataModule,
              ckpt_path: Optional[str]=None, valid: bool=True):
+        if ckpt_path is not None:
+            self._resume_checkpoint(monad, ckpt_path)
+
         dataloader = datamodule.valid_dataloader() if valid else\
                      datamodule.test_dataloader()
         metrics = defaultdict(lambda: [])
@@ -154,6 +154,9 @@ class Trainer:
         """
         Full training logic
         """
+        if ckpt_path is not None:
+            self._resume_checkpoint(monad, ckpt_path)
+
         not_improved_count = 0
         train_dataloader = datamodule.train_dataloader()
         valid_dataloader = datamodule.valid_dataloader()
@@ -167,10 +170,6 @@ class Trainer:
             log = {'epoch': epoch}
             log.update(**{'train/'+k : v.item() for k, v in train_result.items()})
             log.update(**{'val/'+k : v.item() for k, v in valid_result.items()})
-
-            # print logged informations to the screen
-            for key, value in log.items():
-                self.logger.info('    {:15s}: {}'.format(str(key), value))
 
             # evaluate model performance according to configured metric, save best checkpoint as model_best
             best = False
@@ -209,12 +208,13 @@ class Trainer:
         """
 
         self.valid_metrics.reset()
-        for batch_idx, batch in enumerate(data_loader):
+        for batch_idx, batch in track(enumerate(data_loader),
+                                      description="Validating (Epoch %d)" % epoch,
+                                      total=len(data_loader), transient=True):
             metrics = monad.valid_step(*batch)
             loss = metrics['loss'].item()
 
-            self.writer.set_step((epoch - 1) * len(data_loader) + batch_idx,
-                                 'valid')
+            self.writer.set_step(epoch * len(data_loader) + batch_idx, 'valid')
             for met in self.metrics:
                 self.valid_metrics.update(met, metrics[met])
 

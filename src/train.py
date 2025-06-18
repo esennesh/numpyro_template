@@ -4,17 +4,9 @@ import hydra
 import logging
 from numpyro import optim
 from omegaconf import DictConfig
+import os
 import rootutils
 from typing import Any, Callable, Dict, List, Optional, Tuple
-
-from base import BaseTrainer
-from data.datamodule import DataModule
-import model.loss as module_loss
-import model.metric as module_metric
-import model.model as module_arch
-from parse_config import ConfigParser
-from trainer import ParaMonad, Trainer
-from utils import extras, get_metric_value, task_wrapper
 
 rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #
@@ -33,6 +25,9 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 #
 # more info: https://github.com/ashleve/rootutils
 # ------------------------------------------------------------------------------------ #
+from src.data.datamodule import DataModule
+from src.trainer import ParaMonad, Trainer
+from src.utils import extras, get_metric_value, task_wrapper
 
 log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
 @task_wrapper
@@ -63,20 +58,18 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     if cfg.get("train"):
         log.info("Starting training!")
-        # trainer.fit(model=model, datamodule=datamodule, ckpt_path=cfg.get("ckpt_path"))
         trainer.train(monad, datamodule, ckpt_path=cfg.get("ckpt_path"))
 
     train_metrics = trainer.train_metrics.result()
 
     if cfg.get("test"):
         log.info("Starting testing!")
-        # ckpt_path = trainer.checkpoint_callback.best_model_path
-        # if ckpt_path == "":
-        #     log.warning("Best ckpt not found! Using current weights for testing...")
-        #     ckpt_path = None
-        # trainer.test(model=model, datamodule=datamodule, ckpt_path=ckpt_path)
-        test_metrics = trainer.test(monad, datamodule, ckpt_path=None)
-        # log.info(f"Best ckpt path: {ckpt_path}")
+        ckpt_path = str(trainer.checkpoint_dir + '/model_best')
+        if ckpt_path == "" or not os.path.exists(ckpt_path):
+            log.warning("Best ckpt not found! Using current weights for testing...")
+            ckpt_path = None
+        test_metrics = trainer.test(monad, datamodule, ckpt_path=ckpt_path)
+        log.info(f"Best ckpt path: {ckpt_path}")
     else:
         test_metrics = {}
 
