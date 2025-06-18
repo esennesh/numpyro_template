@@ -7,6 +7,7 @@ from numpyro import optim
 from typing import Any, Dict
 
 from .para import ParaMonad
+from src.utils import uncondition
 
 class SviPara(ParaMonad):
     def __init__(self, data_shape, guide, lr, model, num_particles, rng):
@@ -20,7 +21,7 @@ class SviPara(ParaMonad):
 
     def __call__(self, *args, **kwargs):
         predictive = Predictive(
-            self.svi.model, guide=self.svi.guide,
+            uncondition(self.svi.model), guide=self.svi.guide,
             num_samples=self.num_particles, batch_ndims=None, parallel=False,
             params=self.svi.get_params(self.svi_state)
         )
