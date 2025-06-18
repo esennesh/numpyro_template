@@ -3,6 +3,7 @@ import json
 from importlib.util import find_spec
 import logging
 import numpy as np
+import numpyro
 import pandas as pd
 from pathlib import Path
 from itertools import repeat
@@ -14,6 +15,40 @@ import rich.tree
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
+
+class uncondition(numpyro.primitives.Messenger):
+    """
+    Messenger to force the value of observed nodes to be sampled from their
+    distribution, ignoring observations.
+    """
+
+    def __init__(self, fn: Optional[Callable] = None) -> None:
+        super().__init__(fn)
+
+    def process_message(self, msg: numpyro.primitives.Messenger) -> None:
+        """
+        :param msg: current message at a trace site.
+
+        Samples value from distribution, irrespective of whether or not the
+        node has an observed value.
+        """
+        if (msg["type"] != "sample") or msg.get("_control_flow_done", False):
+            if msg["type"] == "control_flow":
+                if self.data is not None:
+                    msg["kwargs"]["substitute_stack"].append(("condition", self.data))
+                if self.condition_fn is not None:
+                    msg["kwargs"]["substitute_stack"].append(
+                        ("condition", self.condition_fn)
+                    )
+            return
+
+        if msg["is_observed"]:
+            msg["is_observed"] = False
+            assert msg["infer"] is not None
+            msg["infer"]["was_observed"] = True
+            msg["infer"]["obs"] = msg["value"]
+            msg["value"] = None
+            msg["done"] = False
 
 def get_metric_value(metric_dict: Dict[str, Any], metric_name: Optional[str]) -> Optional[float]:
     """Safely retrieves value of the metric.
