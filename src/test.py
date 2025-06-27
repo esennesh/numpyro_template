@@ -60,7 +60,8 @@ def test(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     if cfg.ckpt_path == "" or not os.path.exists(cfg.ckpt_path):
         log.warning("Best ckpt not found! Using current weights for testing...")
         cfg.ckpt_path = None
-    test_metrics = trainer.test(monad, datamodule, ckpt_path=cfg.ckpt_path)
+    test_metrics = trainer.test(monad, datamodule, ckpt_path=cfg.ckpt_path,
+                                valid=False)
     log.info(f"Tested from ckpt path: {cfg.ckpt_path}")
 
     # merge train and test metrics
