@@ -7,6 +7,17 @@ from typing import Tuple
 def numpy_collate(batch):
   return tree_map(np.asarray, default_collate(batch))
 
+class IndexedDataset(Dataset):
+    def __init__(self, dataset):
+        self._dataset = dataset
+
+    def __getitem__(self, idx):
+        item = self._dataset[idx]
+        return (*item, np.array(idx))
+
+    def __len__(self):
+        return len(self._dataset)
+
 class DataModule:
     """
     Base class for all data modules
