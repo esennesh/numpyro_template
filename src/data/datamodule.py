@@ -23,13 +23,17 @@ class DataModule:
     Base class for all data modules
     """
     def __init__(self, batch_size: int=64, data_dir: str="data/",
-                 collate_fn=numpy_collate, num_workers: int=1,
-                 pin_memory: bool=False, shuffle: bool=True,
+                 collate_fn=numpy_collate, indexed: bool=False,
+                 num_workers: int=1, pin_memory: bool=False, shuffle: bool=True,
                  validation_split: float=0.1):
         self.data_dir = data_dir
         self.validation_split = validation_split
+        data_train, data_test = self.prepare_data()
+        if indexed:
+            data_train = IndexedDataset(data_train)
+            data_test = IndexedDataset(data_test)
         self.data_train, self.data_val, self.data_test =\
-            self.setup(*self.prepare_data(), validation_split)
+            self.setup(data_train, data_test, validation_split)
 
         self.dataloader_kwargs = {
             'batch_size': batch_size,
