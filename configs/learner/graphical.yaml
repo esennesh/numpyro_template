@@ -1,0 +1,9 @@
+defaults:
+  - optim: adam
+
+_target_: src.learner.graphical.GraphicalModelLearner
+
+rng: 123
+tracer:
+  _target_: src.inference.tracer.ELBOTracer
+  num_particles: 4
