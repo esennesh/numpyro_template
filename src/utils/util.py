@@ -16,6 +16,21 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
 
+def serialize_key(node):
+    import jax.numpy as jnp
+
+    if hasattr(node, "dtype") and jnp.issubdtype(node.dtype, jax.dtypes.prng_key):
+        return jax.random.key_data(node)
+    return node
+
+def unserialize_key(path, node):
+    import jax.numpy as jnp
+    from jax.tree_util import DictKey
+
+    if path[-1] == DictKey(key="rng_key"):
+        return jax.random.wrap_key_data(node.key)
+    return node
+
 class uncondition(numpyro.primitives.Messenger):
     """
     Messenger to force the value of observed nodes to be sampled from their
