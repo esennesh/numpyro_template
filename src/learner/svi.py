@@ -6,10 +6,11 @@ from numpyro.infer import Predictive, SVI, Trace_ELBO
 from numpyro import optim
 from typing import Any, Dict
 
-from .para import ParaMonad
+from .learner import ParamLearner
+from src.data import DataModule
 from src.utils import uncondition
 
-class SviPara(ParaMonad):
+class SviLearner(ParamLearner):
     def __init__(self, data_shape, guide, lr, model, num_particles, rng):
         if not isinstance(rng, Array):
             rng = random.key(rng)
@@ -17,7 +18,7 @@ class SviPara(ParaMonad):
         self.num_particles = num_particles
         self.svi = SVI(model, guide, self.optimizer,
                        Trace_ELBO(num_particles))
-        self.svi_state = self.svi.init(rng, jnp.zeros((1,) + data_shape))
+        self.svi_state = None
 
     def __call__(self, *args, **kwargs):
         predictive = Predictive(
@@ -36,6 +37,17 @@ class SviPara(ParaMonad):
 
     def save(self):
         return {"svi_state": self.svi_state}
+
+    def setup_step(self, datamodule: DataModule):
+        for batch in datamodule.test_dataloader():
+            data = batch[0]
+            break
+
+        if self.svi_state is None:
+            self.svi_state = self.svi.init(self._rng, data)
+        else:
+            self.svi.init(self.svi_state.rng_key, data)
+        return self.svi_state
 
     @staticmethod
     @partial(jit, static_argnums=0)

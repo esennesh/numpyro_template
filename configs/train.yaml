@@ -2,8 +2,8 @@ defaults:
   - _self_
   - data: mnist
   - guide: vae
+  - learner: graphical
   - model: vae
-  - monad: svi
   - trainer: default
   - paths: default
   - extras: default

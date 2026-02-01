@@ -25,9 +25,14 @@ class DataModule:
     def __init__(self, batch_size: int=64, data_dir: str="data/",
                  collate_fn=numpy_collate, indexed: bool=False,
                  num_workers: int=1, pin_memory: bool=False, shuffle: bool=True,
-                 validation_split: float=0.1):
+                 split_seed=None, validation_split: float=0.1):
         self.data_dir = data_dir
         self.validation_split = validation_split
+        import torch
+        self.split_rng = None
+        if split_seed is not None:
+            self.split_rng = torch.Generator().manual_seed(split_seed)
+
         data_train, data_test = self.prepare_data()
         if indexed:
             data_train = IndexedDataset(data_train)
@@ -47,12 +52,12 @@ class DataModule:
     def prepare_data(self) -> Tuple[Dataset, Dataset]:
         raise NotImplementedError
 
-    @staticmethod
-    def setup(train_data, test_data, validation_split) -> Tuple[Dataset, Dataset, Dataset]:
+    def setup(self, train_data, test_data, validation_split) -> Tuple[Dataset, Dataset, Dataset]:
         val_length = int(len(train_data) * validation_split)
         train_val_split = (len(train_data) - val_length, val_length)
         train_data, val_data = random_split(dataset=train_data,
-                                            lengths=train_val_split)
+                                            lengths=train_val_split,
+                                            generator=self.split_rng)
         return train_data, val_data, test_data
 
     @abstractproperty

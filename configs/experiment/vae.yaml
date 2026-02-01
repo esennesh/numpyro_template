@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - override /data: mnist
+  - override /guide: vae
+  - override /model: vae
+
+trainer:
+  epochs: 100

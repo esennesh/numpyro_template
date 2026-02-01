@@ -1,0 +1,32 @@
+[project]
+name = "numpyro-template"
+version = "0.2.0"
+description = "Template repository for deep probabilistic programming in Jax with numpyro"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "graphviz>=0.21",
+    "hydra-colorlog>=1.2.0",
+    "hydra-core>=1.3.2",
+    "iprogress>=0.4",
+    "ipywidgets>=8.1.7",
+    "jax>=0.7.0; platform_system == 'Darwin'",
+    "jax[cuda]>=0.7.0; platform_system != 'Darwin'",
+    "jaxlib>=0.9.0",
+    "jupyterlab>=4.4.5",
+    "jupyterlab-tensorboard-pro>=4.0.0",
+    "matplotlib>=3.10.6",
+    "numpyro",
+    "optax>=0.2.6",
+    "pandas>=2.3.1,<3.0.0",
+    "pytrie>=0.4.0",
+    "rich>=14.1.0",
+    "rootutils>=1.0.7",
+    "tensorboard>=2.20.0",
+    "tensorboardx>=2.6.4",
+    "torch>=2.8.0",
+    "torchvision>=0.23.0",
+]
+
+[tool.uv.sources]
+numpyro = { git = "https://github.com/pyro-ppl/numpyro.git" }

@@ -1,7 +1,9 @@
 from abc import abstractmethod, abstractproperty
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-class ParaMonad:
+from src.data import DataModule
+
+class ParamLearner:
     @abstractmethod
     def __call__(self, *args, **kwargs):
         raise NotImplementedError
@@ -16,6 +18,10 @@ class ParaMonad:
 
     @abstractmethod
     def save(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def setup_step(self, datamodule: DataModule):
         raise NotImplementedError
 
     @abstractmethod

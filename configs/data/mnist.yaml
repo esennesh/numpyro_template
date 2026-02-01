@@ -3,5 +3,5 @@ data_dir: ${paths.data_dir}
 batch_size: 128 # Needs to be divisible by the number of devices (e.g., if in a distributed setup)
 indexed: false
 validation_split: 0.1
-num_workers: 4
+num_workers: 0
 pin_memory: False

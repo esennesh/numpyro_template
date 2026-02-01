@@ -26,7 +26,8 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # more info: https://github.com/ashleve/rootutils
 # ------------------------------------------------------------------------------------ #
 from src.data.datamodule import DataModule
-from src.trainer import ParaMonad, Trainer
+from src.learner import ParamLearner
+from src.trainer import Trainer
 from src.utils import extras, get_metric_value, task_wrapper
 
 log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
@@ -40,10 +41,10 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     log.info(f"Instantiating guide inference program <{cfg.guide._target_}>")
     guide: Callable = hydra.utils.instantiate(cfg.guide)
 
-    log.info(f"Instantiating trainable module <{cfg.monad._target_}>")
-    monad: ParaMonad = hydra.utils.instantiate(cfg.monad,
-                                               data_shape=datamodule.shape,
-                                               guide=guide, model=model)
+    log.info(f"Instantiating trainable module <{cfg.learner._target_}>")
+    learner: ParamLearner = hydra.utils.instantiate(cfg.learner,
+                                                    data_shape=datamodule.shape,
+                                                    guide=guide, model=model)
 
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
     trainer: BaseTrainer = hydra.utils.instantiate(cfg.trainer, logger=log)
@@ -51,14 +52,22 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     object_dict = {
         "cfg": cfg,
         "datamodule": datamodule,
-        "monad": monad,
+        "learner": learner,
         "trainer": trainer,
     }
     # log_hyperparameters(object_dict)
 
     if cfg.get("train"):
         log.info("Starting training!")
-        trainer.train(monad, datamodule, ckpt_path=cfg.get("ckpt_path"))
+        if cfg.get("debug", False):
+            numpyro.enable_validation()
+            jax.config.update("jax_check_tracer_leaks", True)
+            jax.config.update("jax_debug_nans", True)
+            with jax.disable_jit():
+                trainer.train(learner, datamodule,
+                              ckpt_path=cfg.get("ckpt_path"))
+        else:
+            trainer.train(learner, datamodule, ckpt_path=cfg.get("ckpt_path"))
 
     train_metrics = trainer.train_metrics.result()
 
@@ -68,7 +77,7 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if ckpt_path == "" or not os.path.exists(ckpt_path):
             log.warning("Best ckpt not found! Using current weights for testing...")
             ckpt_path = None
-        test_metrics = trainer.test(monad, datamodule, ckpt_path=ckpt_path,
+        test_metrics = trainer.test(learner, datamodule, ckpt_path=ckpt_path,
                                     valid=False)
         log.info(f"Best ckpt path: {ckpt_path}")
     else:
