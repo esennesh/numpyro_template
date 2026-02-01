@@ -1,6 +1,7 @@
 from abc import abstractmethod, abstractproperty
 from collections import defaultdict
 from functools import partial
+import jax
 from jax.random import PRNGKey
 import math
 import numpy as np
@@ -10,9 +11,9 @@ from rich.progress import track
 from typing import Callable, List, Optional
 
 from src.data import DataModule
+from src.learner import ParamLearner
 from src.logger import TensorboardWriter
-from src.utils import flatten, inf_loop, MetricTracker
-from .para import ParaMonad
+from src.utils import flatten, inf_loop, MetricTracker, serialize_key, unserialize_key
 
 def _progress(batch_idx, data_loader):
     base = '[{}/{} ({:.0f}%)]'
@@ -71,7 +72,7 @@ class Trainer:
     def metric_fns(self) -> List[str]:
         raise NotImplementedError
 
-    def _resume_checkpoint(self, monad, resume_path):
+    def _resume_checkpoint(self, learner, resume_path):
         """
         Resume from saved checkpoints
 
@@ -80,18 +81,19 @@ class Trainer:
         resume_path = str(resume_path)
         self.logger.info("Loading checkpoint: {}.npy ...".format(resume_path))
         checkpoint = np.load(resume_path, allow_pickle=True).item()
+        checkpoint = jax.tree.map_with_path(unserialize_key, checkpoint)
         self.epoch = checkpoint['epoch'] + 1
         self.monitor_best = checkpoint['monitor_best']
 
         try:
-            monad.load(checkpoint)
+            learner.load(checkpoint)
         except Exception as ex:
             self.logger.exception(ex.msg)
             raise ex
 
         self.logger.info("Checkpoint loaded. Resume training from epoch {}".format(self.epoch))
 
-    def _save_checkpoint(self, monad, epoch, save_best=False):
+    def _save_checkpoint(self, learner, epoch, save_best=False):
         """
         Saving checkpoints
 
@@ -99,11 +101,9 @@ class Trainer:
         :param log: logging information of the epoch
         :param save_best: if True, rename the saved checkpoint to 'model_best.pth'
         """
-        state = {
-            'epoch': epoch,
-            'monitor_best': self.monitor_best,
-            **monad.save()
-        }
+        state = {'epoch': epoch, 'monitor_best': self.monitor_best,
+                 **learner.save()}
+        state = jax.tree.map(serialize_key, state)
         filename = str(self.checkpoint_dir + '/checkpoint-epoch{}'.format(epoch))
         os.makedirs(self.checkpoint_dir, exist_ok=True)
         np.save(filename, state, allow_pickle=True)
@@ -112,7 +112,7 @@ class Trainer:
             np.save(best_path, state, allow_pickle=True)
             self.logger.info("Saving current best: model_best ...")
 
-    def _train_epoch(self, monad, data_loader, epoch):
+    def _train_epoch(self, learner, data_loader, epoch):
         """
         Training logic for an epoch
 
@@ -127,7 +127,7 @@ class Trainer:
         for batch_idx, batch in track(enumerate(data_loader),
                                       description="Training (Epoch %d)" % epoch,
                                       total=len(data_loader), transient=True):
-            metrics = monad.train_step(*batch)
+            metrics = learner.train_step(*batch)
             loss = metrics['loss'].item()
 
             self.writer.set_step(epoch * len(data_loader) + batch_idx)
@@ -136,35 +136,36 @@ class Trainer:
 
         return self.train_metrics.result()
 
-    def test(self, monad: ParaMonad, datamodule: DataModule,
+    def test(self, learner: ParamLearner, datamodule: DataModule,
              ckpt_path: Optional[str]=None, valid: bool=True):
         if ckpt_path is not None:
-            self._resume_checkpoint(monad, ckpt_path)
+            self._resume_checkpoint(learner, ckpt_path)
 
         dataloader = datamodule.valid_dataloader() if valid else\
                      datamodule.test_dataloader()
         metrics = defaultdict(lambda: [])
         for batch_idx, batch in enumerate(dataloader):
-            for k, v in monad.valid_step(*batch).items():
+            for k, v in learner.valid_step(*batch).items():
                 metrics[k].append(v)
         return {k: np.mean(vs) for k, vs in metrics.items()}
 
-    def train(self, monad: ParaMonad, datamodule: DataModule,
+    def train(self, learner: ParamLearner, datamodule: DataModule,
               ckpt_path: Optional[str]=None):
         """
         Full training logic
         """
         if ckpt_path is not None:
-            self._resume_checkpoint(monad, ckpt_path)
+            self._resume_checkpoint(learner, ckpt_path)
 
         not_improved_count = 0
         train_dataloader = datamodule.train_dataloader()
         valid_dataloader = datamodule.valid_dataloader()
         for epoch in range(self.epoch, self.epochs + 1):
-            train_result = self._train_epoch(monad, train_dataloader, epoch)
+            train_result = self._train_epoch(learner, train_dataloader, epoch)
             valid_result = {}
             if self.validate:
-                valid_result = self._valid_epoch(monad, valid_dataloader, epoch)
+                valid_result = self._valid_epoch(learner, valid_dataloader,
+                                                 epoch)
 
             # save logged information into log dict
             log = {'epoch': epoch}
@@ -197,9 +198,9 @@ class Trainer:
                     break
 
             if epoch % self.save_period == 0:
-                self._save_checkpoint(monad, epoch, save_best=best)
+                self._save_checkpoint(learner, epoch, save_best=best)
 
-    def _valid_epoch(self, monad, data_loader, epoch):
+    def _valid_epoch(self, learner, data_loader, epoch):
         """
         Validate after training an epoch
 
@@ -211,7 +212,7 @@ class Trainer:
         for batch_idx, batch in track(enumerate(data_loader),
                                       description="Validating (Epoch %d)" % epoch,
                                       total=len(data_loader), transient=True):
-            metrics = monad.valid_step(*batch)
+            metrics = learner.valid_step(*batch)
             loss = metrics['loss'].item()
 
             self.writer.set_step(epoch * len(data_loader) + batch_idx, 'valid')
@@ -219,7 +220,7 @@ class Trainer:
                 self.valid_metrics.update(met, metrics[met])
 
         # add histogram of parameters to the tensorboard
-        parameters = monad.parameters
+        parameters = learner.parameters
         for name in parameters:
             for p, par in enumerate(flatten(parameters[name])):
                 self.writer.add_histogram(name + "$" + str(p), np.asarray(par),
