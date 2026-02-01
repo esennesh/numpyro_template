@@ -59,7 +59,15 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     if cfg.get("train"):
         log.info("Starting training!")
-        trainer.train(learner, datamodule, ckpt_path=cfg.get("ckpt_path"))
+        if cfg.get("debug", False):
+            numpyro.enable_validation()
+            jax.config.update("jax_check_tracer_leaks", True)
+            jax.config.update("jax_debug_nans", True)
+            with jax.disable_jit():
+                trainer.train(learner, datamodule,
+                              ckpt_path=cfg.get("ckpt_path"))
+        else:
+            trainer.train(learner, datamodule, ckpt_path=cfg.get("ckpt_path"))
 
     train_metrics = trainer.train_metrics.result()
 
