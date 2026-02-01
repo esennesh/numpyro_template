@@ -7,14 +7,18 @@ from typing import Tuple
 from . import datamodule
 
 class MnistDataModule(datamodule.DataModule):
-    def __init__(self, *args, **kwargs):
-        self.transforms = transforms.Compose([
+    def __init__(self, *args, binarize=True, **kwargs):
+        trnsfrms = [
             transforms.Lambda(
                 lambda x: np.array(x, dtype=jnp.float32) / 255.
             ),
             transforms.Lambda(lambda x: x.reshape(1, 28, 28)),
-            transforms.Lambda(lambda x: np.round(x, decimals=0))
-        ])
+        ]
+        if binarize:
+            trnsfrms.append(
+                transforms.Lambda(lambda x: np.round(x, decimals=0))
+            )
+        self.transforms = transforms.Compose(trnsfrms)
 
         super().__init__(*args, **kwargs)
 
