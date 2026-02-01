@@ -1,7 +1,7 @@
 from abc import abstractmethod, abstractproperty
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
-class ParaMonad:
+class ParamLearner:
     @abstractmethod
     def __call__(self, *args, **kwargs):
         raise NotImplementedError

@@ -6,10 +6,10 @@ from numpyro.infer import Predictive, SVI, Trace_ELBO
 from numpyro import optim
 from typing import Any, Dict
 
-from .para import ParaMonad
+from .learner import ParamLearner
 from src.utils import uncondition
 
-class SviPara(ParaMonad):
+class SviLearner(ParamLearner):
     def __init__(self, data_shape, guide, lr, model, num_particles, rng):
         if not isinstance(rng, Array):
             rng = random.key(rng)
