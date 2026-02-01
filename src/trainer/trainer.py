@@ -138,6 +138,7 @@ class Trainer:
 
     def test(self, learner: ParamLearner, datamodule: DataModule,
              ckpt_path: Optional[str]=None, valid: bool=True):
+        learner.setup_step(datamodule)
         if ckpt_path is not None:
             self._resume_checkpoint(learner, ckpt_path)
 
@@ -154,6 +155,7 @@ class Trainer:
         """
         Full training logic
         """
+        learner.setup_step(datamodule)
         if ckpt_path is not None:
             self._resume_checkpoint(learner, ckpt_path)
 
