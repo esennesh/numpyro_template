@@ -2,7 +2,7 @@ from abc import abstractmethod, abstractproperty
 import numpy as np
 from jax.tree_util import tree_map
 from torch.utils.data import Dataset, DataLoader, default_collate, random_split
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 def numpy_collate(batch):
   return tree_map(np.asarray, default_collate(batch))
