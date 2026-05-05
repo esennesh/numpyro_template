@@ -79,6 +79,6 @@ class DataModule:
 
     def valid_dataloader(self) -> DataLoader:
         return DataLoader(
-            dataset=self.data_train,
+            dataset=self.data_val,
             **self.dataloader_kwargs,
         )
