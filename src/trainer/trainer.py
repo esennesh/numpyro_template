@@ -222,9 +222,6 @@ class Trainer:
                 self.valid_metrics.update(met, metrics[met])
 
         # add histogram of parameters to the tensorboard
-        parameters = learner.parameters
-        for name in parameters:
-            for p, par in enumerate(flatten(parameters[name])):
-                self.writer.add_histogram(name + "$" + str(p), np.asarray(par),
-                                          bins='auto')
+        for name, par in flatten(learner.parameters):
+            self.writer.add_histogram(name, np.asarray(par), bins="auto")
         return self.valid_metrics.result()
