@@ -2,7 +2,7 @@ from abc import abstractmethod, abstractproperty
 import numpy as np
 from jax.tree_util import tree_map
 from torch.utils.data import Dataset, DataLoader, default_collate, random_split
-from typing import Tuple
+from typing import Any, Dict, Tuple
 
 def numpy_collate(batch):
   return tree_map(np.asarray, default_collate(batch))
@@ -22,7 +22,7 @@ class DataModule:
     """
     Base class for all data modules
     """
-    def __init__(self, batch_size: int=64, data_dir: str="data/",
+    def __init__(self, batch_size: int=64, data_dir: str="data/", drop_last=False,
                  collate_fn=numpy_collate, indexed: bool=False,
                  num_workers: int=1, pin_memory: bool=False, shuffle: bool=True,
                  split_seed=None, validation_split: float=0.1):
@@ -43,6 +43,7 @@ class DataModule:
         self.dataloader_kwargs = {
             'batch_size': batch_size,
             'collate_fn': collate_fn,
+            'drop_last': drop_last,
             'num_workers': num_workers,
             'pin_memory': pin_memory,
             'shuffle': shuffle,
@@ -78,6 +79,6 @@ class DataModule:
 
     def valid_dataloader(self) -> DataLoader:
         return DataLoader(
-            dataset=self.data_train,
+            dataset=self.data_val,
             **self.dataloader_kwargs,
         )
