@@ -1,5 +1,8 @@
 from collections import namedtuple
 import jax
+from jax.example_libraries.optimizers import (OptimizerState,
+                                              pack_optimizer_state,
+                                              unpack_optimizer_state)
 import json
 from importlib.util import find_spec
 import logging
@@ -19,6 +22,25 @@ import rich.tree
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
+
+def flatten_optim_state(state):
+    if isinstance(state[1], OptimizerState):
+        optim_state = unpack_optimizer_state(state[1])
+        subtrees = {k: join.subtree for k, join in optim_state.items()}
+        subtrees = jax.tree.transpose(state[1].tree_def,
+                                      state[1].subtree_defs[0], subtrees)
+        return (state[0], subtrees)
+    return state
+
+def unflatten_optim_state(state, template):
+    if isinstance(template[1], OptimizerState):
+        unpacked_template = unpack_optimizer_state(template[1])
+        subtrees = jax.tree.transpose(template[1].subtree_defs[0],
+                                      template[1].tree_def, state[1])
+        subtrees = pack_optimizer_state({k: JoinPoint(v) for k, v
+                                         in subtrees.items()})
+        return (state[0], subtrees)
+    return state
 
 def is_autoguide(g):
     import abc
