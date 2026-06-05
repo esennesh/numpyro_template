@@ -1,0 +1,12 @@
+_target_: src.learner.batchvi.BatchGraphLearner
+
+local_optim:
+  _target_: optax.adam
+  learning_rate: 1e-3
+optim:
+  _target_: optax.adam
+  learning_rate: 1e-3
+rng: 123
+tracer:
+  _target_: src.inference.tracer.ELBOTracer
+  num_particles: 4
