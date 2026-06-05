@@ -1,0 +1,2 @@
+_target_: numpyro.infer.autoguide.AutoNormal
+_partial_: true
