@@ -1,0 +1,10 @@
+_target_: src.model.airish.air_model
+_partial_: true
+decoder:
+  _target_: src.model.airish.AirDecoder
+  out_side: 28
+  z_what_dim: 50
+  rngs:
+    _target_: flax.nnx.Rngs
+    default: 1234
+out_side: 50

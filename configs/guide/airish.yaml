@@ -1,0 +1,16 @@
+_target_: src.model.airish.air_guide
+_partial_: true
+what_enc:
+  _target_: src.model.airish.WhatEncoder
+  in_side: 28
+  z_what_dim: 50
+  rngs:
+    _target_: flax.nnx.Rngs
+    default: 5678
+where_enc:
+  _target_: src.model.airish.WhereEncoder
+  img_side: 50
+  hidden_dim: 256
+  rngs:
+    _target_: flax.nnx.Rngs
+    default: 9101112
