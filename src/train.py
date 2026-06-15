@@ -1,8 +1,9 @@
 import argparse
 import collections
 import hydra
+import jax
 import logging
-from numpyro import optim
+import numpyro
 from omegaconf import DictConfig
 import os
 import rootutils
