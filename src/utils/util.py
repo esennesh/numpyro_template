@@ -1,5 +1,6 @@
 from collections import namedtuple
 import jax
+import jax.numpy as jnp
 from jax.example_libraries.optimizers import (OptimizerState,
                                               pack_optimizer_state,
                                               unpack_optimizer_state)
@@ -22,6 +23,14 @@ import rich.tree
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
+
+def effective_sample_size(log_weights, normalized: bool=False, axis: int=0):
+    log_total_weight = jax.nn.logsumexp(log_weights, axis=axis)
+    log_total_squared_weight = jax.nn.logsumexp(2 * log_weights, axis=axis)
+    ess = jnp.exp(2 * log_total_weight - log_total_squared_weight)
+    if normalized:
+        ess = ess / log_weights.shape[axis]
+    return ess
 
 def flatten_optim_state(state):
     if isinstance(state[1], OptimizerState):
