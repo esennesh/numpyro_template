@@ -125,6 +125,7 @@ class Trainer:
             log_step = self.log_step
         self.train_metrics.reset()
         for batch_idx, batch in track(enumerate(data_loader),
+                                      auto_refresh=False,
                                       description="Training (Epoch %d)" % epoch,
                                       total=len(data_loader), transient=True):
             metrics = learner.train_step(*batch)
@@ -212,6 +213,7 @@ class Trainer:
 
         self.valid_metrics.reset()
         for batch_idx, batch in track(enumerate(data_loader),
+                                      auto_refresh=False,
                                       description="Validating (Epoch %d)" % epoch,
                                       total=len(data_loader), transient=True):
             metrics = learner.valid_step(*batch)
