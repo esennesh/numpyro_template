@@ -7,6 +7,13 @@ import numpyro
 from numpyro.contrib.module import nnx_module
 import numpyro.distributions as dist
 
+MIN_Z_WHERE_SCALE = 1e-2
+MAX_Z_WHERE_SCALE = 20.
+MAX_LOG_VARIANCE = 10.
+GLIMPSE_SCALE_PRIOR_LOC = 0.
+GLIMPSE_SCALE_PRIOR_SCALE = 0.1
+MIN_GUIDE_SCALE = 1e-4
+
 # Takes pixel intensities of the attention window to parameters (mean,
 # standard deviation) of the distribution over the latent code, z_what.
 class WhatEncoder(nnx.Module):
@@ -51,14 +58,26 @@ class WhereEncoder(nnx.Module):
     def __call__(self, img, rngs=None):
         img = img.reshape((img.shape[0], math.prod(img.shape[1:]),))
         a = self.layers(img)
-        z_where_loc = jnp.concatenate((nnx.softplus(a[:, 0:1]), a[:, 1:3]),
-                                      axis=1)
-        z_where_scale = nnx.softplus(a[:, 3:]) # Squish to >0
-        return z_where_loc, z_where_scale
+        log_glimpse_scale_loc = a[:, 0:1]
+        glimpse_translate_loc = a[:, 1:3]
+        log_glimpse_scale_scale = nnx.softplus(a[:, 3:4]) + MIN_GUIDE_SCALE
+        glimpse_translate_scale = nnx.softplus(a[:, 4:]) + MIN_GUIDE_SCALE
+        return (
+            log_glimpse_scale_loc,
+            log_glimpse_scale_scale,
+            glimpse_translate_loc,
+            glimpse_translate_scale,
+        )
 
     @property
     def img_side(self):
         return self._img_side
+
+def safe_z_where_scale(scale):
+    return jnp.clip(scale, MIN_Z_WHERE_SCALE, MAX_Z_WHERE_SCALE)
+
+def compose_z_where(glimpse_scale, glimpse_translate):
+    return jnp.concatenate((glimpse_scale, glimpse_translate), axis=-1)
 
 def z_where_inv(z_where):
     # Take a batch of z_where vectors, and compute their "inverse".
@@ -66,7 +85,7 @@ def z_where_inv(z_where):
     # [s,x,y] -> [1/s,-x/s,-y/s]
     # These are the parameters required to perform the inverse of the
     # spatial transform performed in the generative model.
-    s = z_where[:, 0]
+    s = safe_z_where_scale(z_where[:, 0])
     return jnp.array([1 / s, -z_where[:, 1] / s, -z_where[:, 2] / s]).T
 
 def air_guide(xs, what_enc: WhatEncoder, where_enc: WhereEncoder):
@@ -74,10 +93,27 @@ def air_guide(xs, what_enc: WhatEncoder, where_enc: WhereEncoder):
     enc_where = nnx_module("where_enc", where_enc)
 
     with numpyro.plate("batch", xs.shape[0]):
-        z_where_loc, z_where_scale = enc_where(xs)
-        z_where = numpyro.sample(
-            'z_where', dist.Normal(z_where_loc, z_where_scale).to_event(1)
+        (
+            log_glimpse_scale_loc,
+            log_glimpse_scale_scale,
+            glimpse_translate_loc,
+            glimpse_translate_scale,
+        ) = enc_where(xs)
+        glimpse_scale = numpyro.sample(
+            "glimpse_scale",
+            dist.LogNormal(
+                log_glimpse_scale_loc,
+                log_glimpse_scale_scale,
+            ).to_event(1),
         )
+        glimpse_translate = numpyro.sample(
+            "glimpse_translate",
+            dist.Normal(
+                glimpse_translate_loc,
+                glimpse_translate_scale,
+            ).to_event(1),
+        )
+        z_where = jnp.concatenate((glimpse_scale, glimpse_translate), axis=-1)
         blitter = jax.vmap(functools.partial(scale_and_translate,
                                              out_side=what_enc.att_side))
         x_att = blitter(xs, z_where_inv(z_where))
@@ -116,14 +152,16 @@ class AirDecoder(nnx.Module):
         h = self.mlp(z_what)
         x = self.convs(h.reshape(-1, 7, 7, 32))
         x = x.reshape(-1, 1, self._out_side, self._out_side)
-        return x, jnp.exp(2 * self.precision(h)).squeeze()
+        log_variance = jnp.clip(2 * self.precision(h),
+                                -MAX_LOG_VARIANCE, MAX_LOG_VARIANCE)
+        return x, jnp.exp(log_variance).squeeze()
 
     @property
     def z_what_dim(self):
         return self._z_what_dim
 
 def scale_and_translate(image, where, out_side=50):
-    scalar = where[0]
+    scalar = safe_z_where_scale(where[0])
     where = where[1:]
     translate = abs(image.shape[-1] - out_side) * (where[..., ::-1] + 1) / 2
     return jax.image.scale_and_translate(image, (1, out_side, out_side), (1, 2),
@@ -137,14 +175,19 @@ def air_model(xs, decoder: AirDecoder, out_side=50):
     canvas = jnp.zeros(xs.shape)
 
     with numpyro.plate("batch", xs.shape[0]):
-        # Sample object pose. This is a 3-dimensional vector representing (x, y)
-        # position and size.
-
-        z_where = numpyro.sample(
-            'z_where',
-            dist.Normal(jnp.array([3., 0., 0.]),
-                        jnp.array([0.1, 1., 1.])).to_event(1)
+        # Sample object pose: positive scale plus x/y translation.
+        glimpse_scale = numpyro.sample(
+            "glimpse_scale",
+            dist.LogNormal(
+                jnp.array([GLIMPSE_SCALE_PRIOR_LOC]),
+                jnp.array([GLIMPSE_SCALE_PRIOR_SCALE]),
+            ).to_event(1),
         )
+        glimpse_translate = numpyro.sample(
+            "glimpse_translate",
+            dist.Normal(jnp.zeros(2), jnp.ones(2)).to_event(1),
+        )
+        z_where = jnp.concatenate((glimpse_scale, glimpse_translate), axis=-1)
 
         # Sample object code. This is a 50-dimensional vector.
         z_what = numpyro.sample('z_what', dist.Normal(
