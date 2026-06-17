@@ -170,21 +170,21 @@ class ELBOTracer(ParticleTracer):
         downstream_costs: Dict[str, MultiFrameTensor] =\
             defaultdict(lambda: MultiFrameTensor())
         for name, site in traces.items():
-            log_ws = log_ws + site[1]
+            log_ws = log_ws + site["log_p"]
             for key in self._model_deps.get(name, []):
                 downstream_costs[key].add((
                     self._model_properties[name]["cond_indep_stack"],
-                    site[1]
+                    site["log_p"]
                 ))
             if name in self._guide_properties:
-                log_q = site[2]
+                log_q = site["log_q"]
                 if not self._guide_properties[name]["reparameterized"]:
                     log_q = jax.lax.stop_gradient(log_q)
                 log_ws = log_ws - log_q
                 for key in self._guide_deps[name]:
                     downstream_costs[key].add((
                         self._guide_properties[name]["cond_indep_stack"],
-                        -site[2]
+                        -site["log_q"]
                     ))
 
         for node, cost in downstream_costs.items():
@@ -192,7 +192,9 @@ class ELBOTracer(ParticleTracer):
                 self._guide_properties[node]["cond_indep_stack"]
             )
             advantage = downstream_cost - downstream_cost.mean(axis=0)
-            surrogate = traces[node][2] * jax.lax.stop_gradient(advantage)
+            surrogate = traces[node]["log_q"] * jax.lax.stop_gradient(
+                advantage
+            )
             log_ws = log_ws + surrogate - jax.lax.stop_gradient(surrogate)
         return log_ws
 
