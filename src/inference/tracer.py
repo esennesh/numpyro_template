@@ -309,7 +309,8 @@ class OvisTracer(ParticleTracer):
 
 class VarGradMixin(VariationalMixin):
     def log_weights(self, traces, mutables):
-        return sum(jnp.sum(site[1], axis=-1) - jnp.sum(site[2], axis=-1)
+        return sum(jnp.sum(site["log_p"], axis=-1) -
+                   jnp.sum(site["log_q"], axis=-1)
                    for name, site in traces.items())
 
     def loss_fn(self, log_ws, traces):
