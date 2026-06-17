@@ -274,7 +274,7 @@ class OvisTracer(ParticleTracer):
         for name, site in traces.items():
             if name in self._guide_properties and\
                not self._guide_properties[name]["reparameterized"]:
-                log_q = site[2][:num_particles]
+                log_q = site["log_q"][:num_particles]
                 surrogate = log_q * jax.lax.stop_gradient(advantages)
                 surrogates = surrogates + surrogate
         surrogates = surrogates.sum(axis=0)
