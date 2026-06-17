@@ -131,7 +131,7 @@ class BatchGraphLearner(GraphicalModelLearner):
         trace, mutables = self.tracer(rng, params, particle_params,
                                       reconstruct(self.model), self.guide, data,
                                       **kwargs)
-        return {k: v[0] for k, v in trace.items()}
+        return {k: v["value"] for k, v in trace.items()}, trace
 
     def load(self, checkpoint: Dict[str, Any]):
         super().load(checkpoint)
@@ -303,7 +303,7 @@ class BatchGraphLearner(GraphicalModelLearner):
             data, *self.load_batch(indices, stage=stage), self.rng
         )
         loader = "train" if stage == "valid" else stage
-        local_buffers = {k: v[0] for k, v in state["trace"].items()
+        local_buffers = {k: v["value"] for k, v in state["trace"].items()
                          if k in self.stage_buffers[loader].tensors.keys()}
         self.save_batch(
             indices, local_optim, local_buffers,
