@@ -113,41 +113,6 @@ class ParticleTracer(ELBOMixin):
         particle_traces = jax.vmap(single_trace)
         return particle_traces(rng_keys, particle_params, particle=particles)
 
-    def guided_log_weights(self, rng_key, param_map, particle_params, model,
-                           guide, *args, **kwargs):
-        traces = self(rng_key, param_map, particle_params, model, guide, *args,
-                      **kwargs)
-        return {k: (log_p, log_q) for k, (_, log_p, log_q, _) in traces.items()
-                if log_p is not 0.}
-
-    def log_probs(self, model, params, particle_params, traces, *args,
-                  **kwargs):
-        params = params.copy()
-        particle_params = jax.tree.map(
-            lambda leaf: jnp.broadcast_to(leaf, (self.num_particles,
-                                                 *leaf.shape))
-                         if leaf.shape[0] != self.num_particles else leaf,
-            particle_params
-        )
-
-        def single_log_prob(pwise_params, trace, particle=None):
-            import functools
-
-            params.update(pwise_params)
-            params.update(trace)
-            particle_model = model
-            if particle is not None:
-                particle_model = numpyro.handlers.infer_config(
-                    particle_model,
-                    functools.partial(configure_sample, k=particle)
-                )
-            log_ps, _ = compute_log_probs(model, args, kwargs, params)
-            return log_ps
-
-        particles = jnp.arange(self.num_particles)
-        particle_log_probs = jax.vmap(single_log_prob)
-        return particle_log_probs(particle_params, traces, particle=particles)
-
     def loss(self, *args, **kwargs):
         traces, mutables = self(*args, **kwargs)
         for k, v in traces.items():
