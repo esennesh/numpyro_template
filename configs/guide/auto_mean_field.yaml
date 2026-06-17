@@ -1,0 +1,2 @@
+_target_: src.inference.auto_mean_field.AutoMeanFieldProposal
+_partial_: true
