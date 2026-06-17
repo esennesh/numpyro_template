@@ -13,8 +13,29 @@ from numpyro.util import _validate_model, check_model_guide_match
 
 from typing import Callable, Dict, Optional
 
+def broadcast_observed(observed, target_shape):
+    while observed.ndim < len(target_shape):
+        observed = jnp.expand_dims(observed, axis=-1)
+    return jnp.broadcast_to(observed, target_shape)
+
 def configure_sample(msg: Message, /, **kwargs) -> Dict:
     return kwargs
+
+def expected_value(site: Dict):
+    fn = site.get("fn", None)
+    mean = getattr(fn, "mean", None)
+    if mean is None:
+        return site["value"]
+    return mean() if callable(mean) else mean
+
+def trace_entry(site: Dict, log_p, log_q, observed):
+    return {
+        "value": site["value"],
+        "log_p": log_p,
+        "log_q": log_q,
+        "observed": observed,
+        "ev": expected_value(site),
+    }
 
 class VariationalMixin(ABC):
     def log_weights(self, traces, mutables):
