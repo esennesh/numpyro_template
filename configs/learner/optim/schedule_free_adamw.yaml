@@ -1,0 +1,2 @@
+_target_: optax.contrib.schedule_free_adamw
+learning_rate: 2e-3
