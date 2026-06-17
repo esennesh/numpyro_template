@@ -61,7 +61,7 @@ class GraphicalModelLearner(ParamLearner):
         trace, mutables = self.tracer(rng, params, particle_params,
                                       reconstruct(self.model),
                                       self.guide, *args, **kwargs)
-        return {k: v[0] for k, v in trace.items()}
+        return {k: v["value"] for k, v in trace.items()}, trace
 
     @cached_property
     def _evaluate(self):
