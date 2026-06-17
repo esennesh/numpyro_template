@@ -49,8 +49,8 @@ class ELBOMixin(VariationalMixin):
         log_ws = 0.
         beta = getattr(self, "beta", 1.)
         for name, site in traces.items():
-            term = site[1] - site[2]
-            log_ws = log_ws + jnp.where(site[3], term, beta * term)
+            term = site["log_p"] - site["log_q"]
+            log_ws = log_ws + jnp.where(site["observed"], term, beta * term)
         return log_ws
 
     def loss_fn(self, log_ws, traces):
