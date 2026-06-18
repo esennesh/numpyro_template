@@ -349,10 +349,11 @@ class AdaptiveParticleTracer(IwaeMixin, ParticleTracer):
                 adapted_params = adapt(*args, **kwargs)
             guide = functools.partial(guide, adaptation=adapted_params)
 
-        def single_trace(rng_key, pwise_params, particle=None):
+        def single_trace(rng_key, pwise_params, param_map=param_map,
+                         particle=None):
             import functools
 
-            param_map.update(pwise_params)
+            param_map = param_map | pwise_params
             particle_guide, particle_model = guide, model
 
             model_seed, guide_seed = random.split(rng_key)
