@@ -2,6 +2,7 @@ from abc import ABC
 from collections import defaultdict
 from functools import cached_property
 import functools
+import math
 import jax
 import jax.numpy as jnp
 import jax.random as random
@@ -27,6 +28,16 @@ def expected_value(site: Dict):
     if mean is None:
         return site["value"]
     return mean() if callable(mean) else mean
+
+def logmeanexp(value, axis=None, keepdims=False):
+    if axis is None:
+        size = value.size
+    elif isinstance(axis, tuple):
+        size = math.prod(value.shape[idx] for idx in axis)
+    else:
+        size = value.shape[axis]
+    return jax.scipy.special.logsumexp(value, axis=axis, keepdims=keepdims) -\
+        jnp.log(size)
 
 def trace_entry(site: Dict, log_p, log_q, observed):
     return {
