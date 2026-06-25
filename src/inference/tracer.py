@@ -331,7 +331,7 @@ class OnlineWeightMixin(VariationalMixin):
 class OnlineVarGradTracer(OnlineWeightMixin, VarGradTracer):
     pass
 
-class AdaptiveParticleTracer(IwaeMixin, ParticleTracer):
+class AdaptiveParticleTracer(ParticleTracer):
     def __call__(self, rng_key, param_map, particle_params, model, guide,
                  *args, **kwargs):
         param_map = param_map.copy()
