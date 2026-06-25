@@ -55,21 +55,32 @@ class VariationalMixin(ABC):
     def loss_fn(self, log_ws, traces):
         raise NotImplementedError
 
+    def sum_log_weights(self, log_ws):
+        total = jnp.array(0.0)
+        for site_log_ws in log_ws.values():
+            for term in site_log_ws.values():
+                total = total + term
+        return total
+
 class ELBOMixin(VariationalMixin):
     def log_weights(self, traces):
-        log_ws = 0.
         beta = getattr(self, "beta", 1.)
-        for name, site in traces.items():
-            term = site["log_p"] - site["log_q"]
-            log_ws = log_ws + jnp.where(site["observed"], term, beta * term)
-        return log_ws
+        return {
+            name: {
+                "guide": jnp.where(site["observed"], -site["log_q"],
+                                   -beta * site["log_q"]),
+                "model": jnp.where(site["observed"], site["log_p"],
+                                   beta * site["log_p"]),
+            }
+            for name, site in traces.items()
+        }
 
     def loss_fn(self, log_ws, traces):
-        return -jnp.mean(log_ws, axis=0).sum()
+        return -jnp.mean(self.sum_log_weights(log_ws), axis=0).sum()
 
 class IwaeMixin(ELBOMixin):
     def loss_fn(self, log_ws, traces):
-        return -jax.nn.logmeanexp(log_ws)
+        return -logmeanexp(self.sum_log_weights(log_ws))
 
 class ParticleTracer(ELBOMixin):
     def __init__(self, beta: float=1., num_particles: int=1):
@@ -174,7 +185,8 @@ class ParticleTracer(ELBOMixin):
                                              v["log_p"].shape)
             traces[k] = v | {"observed": is_observed}
         log_ws = self.log_weights(traces)
-        return self.loss_fn(log_ws, traces), {"log_w": log_ws.sum(axis=-1),
+        total_log_w = self.sum_log_weights(log_ws)
+        return self.loss_fn(log_ws, traces), {"log_w": total_log_w.sum(axis=-1),
                                               "mutables": mutables,
                                               "trace": traces}
 
@@ -188,38 +200,16 @@ class ELBOTracer(ParticleTracer):
         self._guide_properties, self._model_properties = {}, {}
 
     def log_weights(self, traces):
-        log_ws = jnp.array(0.0)
-        # mapping from non-reparameterizable sample sites to cost terms
-        # influenced by each of them
-        downstream_costs: Dict[str, MultiFrameTensor] =\
-            defaultdict(lambda: MultiFrameTensor())
+        log_ws = {}
         for name, site in traces.items():
-            log_ws = log_ws + site["log_p"]
-            for key in self._model_deps.get(name, []):
-                downstream_costs[key].add((
-                    self._model_properties[name]["cond_indep_stack"],
-                    site["log_p"]
-                ))
-            if name in self._guide_properties:
-                log_q = site["log_q"]
-                if not self._guide_properties[name]["reparameterized"]:
-                    log_q = jax.lax.stop_gradient(log_q)
-                log_ws = log_ws - log_q
-                for key in self._guide_deps[name]:
-                    downstream_costs[key].add((
-                        self._guide_properties[name]["cond_indep_stack"],
-                        -site["log_q"]
-                    ))
-
-        for node, cost in downstream_costs.items():
-            downstream_cost = cost.sum_to(
-                self._guide_properties[node]["cond_indep_stack"]
-            )
-            advantage = downstream_cost - downstream_cost.mean(axis=0)
-            surrogate = traces[node]["log_q"] * jax.lax.stop_gradient(
-                advantage
-            )
-            log_ws = log_ws + surrogate - jax.lax.stop_gradient(surrogate)
+            log_q = site["log_q"]
+            if name in self._guide_properties and\
+               not self._guide_properties[name]["reparameterized"]:
+                log_q = jax.lax.stop_gradient(log_q)
+            log_ws[name] = {
+                "guide": -log_q,
+                "model": site["log_p"],
+            }
         return log_ws
 
     def loss_fn(self, log_ws, traces):
@@ -227,7 +217,46 @@ class ELBOTracer(ParticleTracer):
                               in self._guide_properties.values())
         if reparameterized:
             return super().loss_fn(log_ws, traces)
+        downstream_costs = self._downstream_costs(log_ws)
+        surrogate = self._score_function_surrogate(downstream_costs, traces)
+        total_log_w = self.sum_log_weights(log_ws)
+        log_ws = total_log_w + surrogate - jax.lax.stop_gradient(surrogate)
         return -(jnp.sum(log_ws, axis=0) / (log_ws.shape[0] - 1)).sum()
+
+    def _downstream_costs(self, log_ws):
+        downstream_costs: Dict[str, MultiFrameTensor] =\
+            defaultdict(lambda: MultiFrameTensor())
+        for name, site_log_ws in log_ws.items():
+            if name in self._model_properties:
+                for node in self._model_deps.get(name, []):
+                    if self._requires_score_surrogate(node):
+                        downstream_costs[node].add((
+                            self._model_properties[name]["cond_indep_stack"],
+                            site_log_ws["model"]
+                        ))
+            if name in self._guide_properties:
+                for node in self._guide_deps.get(name, []):
+                    if self._requires_score_surrogate(node):
+                        downstream_costs[node].add((
+                            self._guide_properties[name]["cond_indep_stack"],
+                            site_log_ws["guide"]
+                        ))
+        return downstream_costs
+
+    def _requires_score_surrogate(self, name):
+        return name in self._guide_properties and\
+               not self._guide_properties[name]["reparameterized"]
+
+    def _score_function_surrogate(self, downstream_costs, traces):
+        surrogate = jnp.array(0.0)
+        for node, cost in downstream_costs.items():
+            downstream_cost = cost.sum_to(
+                self._guide_properties[node]["cond_indep_stack"]
+            )
+            advantage = downstream_cost - downstream_cost.mean(axis=0)
+            surrogate = surrogate + traces[node]["log_q"] *\
+                jax.lax.stop_gradient(advantage)
+        return surrogate
 
     def setup(self, guide_deps, model_deps, guide_trace, model_trace):
         self._guide_deps, self._model_deps = guide_deps, model_deps
@@ -283,16 +312,18 @@ class OvisTracer(ParticleTracer):
 
     def loss_fn(self, log_ws, traces):
         num_particles = self.num_particles - self._num_aux
-        log_weights, log_aux = log_ws[:num_particles], log_ws[num_particles:]
+        total_log_ws = self.sum_log_weights(log_ws)
+        log_weights = total_log_ws[:num_particles]
+        log_aux = total_log_ws[num_particles:]
 
         rewards = self.objective(log_weights, axis=0)
         values = self.control_variate(log_weights, log_aux)
         advantages = rewards - values
 
         if self._include_aux:
-            log_evidence = jax.nn.logmeanexp(log_ws, axis=0)
+            log_evidence = logmeanexp(total_log_ws, axis=0)
         else:
-            log_evidence = jax.nn.logmeanexp(log_weights, axis=0)
+            log_evidence = logmeanexp(log_weights, axis=0)
 
         surrogates = jnp.zeros_like(log_weights)
         for name, site in traces.items():
@@ -308,8 +339,8 @@ class OvisTracer(ParticleTracer):
     @cached_property
     def objective(self):
         def fn(log_ws, axis=0):
-            return jax.nn.logmeanexp(log_ws, axis=axis, keepdims=True) -\
-                   jax.nn.softmax(log_ws, axis=axis)
+            return logmeanexp(log_ws, axis=axis, keepdims=True) -\
+                jax.nn.softmax(log_ws, axis=axis)
         return fn
 
     def setup(self, guide_deps, model_deps, guide_trace, model_trace):
@@ -333,23 +364,32 @@ class OvisTracer(ParticleTracer):
 
 class VarGradMixin(VariationalMixin):
     def log_weights(self, traces):
-        return sum(jnp.sum(site["log_p"], axis=-1) -
-                   jnp.sum(site["log_q"], axis=-1)
-                   for name, site in traces.items())
+        return {
+            name: {
+                "guide": -jnp.sum(site["log_q"], axis=-1),
+                "model": jnp.sum(site["log_p"], axis=-1),
+            }
+            for name, site in traces.items()
+        }
 
     def loss_fn(self, log_ws, traces):
-        return jnp.var(-log_ws, axis=0, ddof=1.).sum() / 2
+        return jnp.var(
+            -self.sum_log_weights(log_ws), axis=0, ddof=1.
+        ).sum() / 2
 
 class VarGradTracer(VarGradMixin, ParticleTracer):
     pass
 
 class OnlineWeightMixin(VariationalMixin):
     def log_weights(self, traces):
-        log_likelihood = sum(jnp.where(site["observed"], site["log_p"],
-                                       jnp.zeros_like(site["observed"]))
-                             for name, site in traces.items())
-        log_q = sum(site["log_q"] for site in traces.values())
-        return log_likelihood - log_q
+        return {
+            name: {
+                "guide": -site["log_q"],
+                "model": jnp.where(site["observed"], site["log_p"],
+                                   jnp.zeros_like(site["log_p"])),
+            }
+            for name, site in traces.items()
+        }
 
 class OnlineVarGradTracer(OnlineWeightMixin, VarGradTracer):
     pass
