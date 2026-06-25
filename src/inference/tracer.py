@@ -49,14 +49,14 @@ def trace_entry(site: Dict, log_p, log_q, observed):
     }
 
 class VariationalMixin(ABC):
-    def log_weights(self, traces, mutables):
+    def log_weights(self, traces):
         raise NotImplementedError
 
     def loss_fn(self, log_ws, traces):
         raise NotImplementedError
 
 class ELBOMixin(VariationalMixin):
-    def log_weights(self, traces, mutables):
+    def log_weights(self, traces):
         log_ws = 0.
         beta = getattr(self, "beta", 1.)
         for name, site in traces.items():
@@ -173,7 +173,7 @@ class ParticleTracer(ELBOMixin):
             is_observed = broadcast_observed(v["observed"],
                                              v["log_p"].shape)
             traces[k] = v | {"observed": is_observed}
-        log_ws = self.log_weights(traces, mutables)
+        log_ws = self.log_weights(traces)
         return self.loss_fn(log_ws, traces), {"log_w": log_ws.sum(axis=-1),
                                               "mutables": mutables,
                                               "trace": traces}
@@ -187,9 +187,7 @@ class ELBOTracer(ParticleTracer):
         self._guide_deps, self._model_deps = None, None
         self._guide_properties, self._model_properties = {}, {}
 
-    def log_weights(self, traces, mutables):
-        if jax.tree.leaves(mutables):
-            return super().log_weights(traces, mutables)
+    def log_weights(self, traces):
         log_ws = jnp.array(0.0)
         # mapping from non-reparameterizable sample sites to cost terms
         # influenced by each of them
@@ -334,7 +332,7 @@ class OvisTracer(ParticleTracer):
             }
 
 class VarGradMixin(VariationalMixin):
-    def log_weights(self, traces, mutables):
+    def log_weights(self, traces):
         return sum(jnp.sum(site["log_p"], axis=-1) -
                    jnp.sum(site["log_q"], axis=-1)
                    for name, site in traces.items())
@@ -346,7 +344,7 @@ class VarGradTracer(VarGradMixin, ParticleTracer):
     pass
 
 class OnlineWeightMixin(VariationalMixin):
-    def log_weights(self, traces, mutables):
+    def log_weights(self, traces):
         log_likelihood = sum(jnp.where(site["observed"], site["log_p"],
                                        jnp.zeros_like(site["observed"]))
                              for name, site in traces.items())
