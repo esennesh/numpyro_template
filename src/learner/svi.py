@@ -59,12 +59,12 @@ class SviLearner(ParamLearner):
     def svi_update(svi, state, data):
         return svi.update(state, data)
 
-    def test_step(self, data, *args):
+    def test_step(self, batch, data, *args):
         return {"loss": self.svi_evaluate(self.svi, self.svi_state, data)}
 
-    def train_step(self, data, *args):
+    def train_step(self, batch, epoch, data, *args):
         self.svi_state, loss = self.svi_update(self.svi, self.svi_state, data)
         return {"loss": loss}
 
-    def valid_step(self, data, *args) -> Dict[str, float]:
+    def valid_step(self, batch, epoch, data, *args) -> Dict[str, float]:
         return {"loss": self.svi_evaluate(self.svi, self.svi_state, data)}
