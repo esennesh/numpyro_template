@@ -235,12 +235,12 @@ class GraphicalModelLearner(ParamLearner):
                        if v["observed"].all()}
         return metrics, predictions
 
-    def test_step(self, data, *args, **kwargs):
+    def test_step(self, batch, data, *args, **kwargs):
         loss, self._rng, state = self._evaluate(data, self.parameters, self.rng)
         self._buffer_state.update(state["mutables"])
         return self._step_telemetry(loss, state)
 
-    def train_step(self, data, *args, **kwargs):
+    def train_step(self, batch, epoch, data, *args, **kwargs):
         loss, self.optim_state, self._rng, state = self._update(
             data, self.optim_state, self.rng
         )
@@ -253,7 +253,7 @@ class GraphicalModelLearner(ParamLearner):
                 updates=self.parameters, state=self.schedule_state, value=loss
             )
 
-    def valid_step(self, data, *args, **kwargs):
+    def valid_step(self, batch, epoch, data, *args, **kwargs):
         loss, self._rng, state = self._evaluate(data, self.parameters, self.rng)
         self._buffer_state.update(state["mutables"])
         return self._step_telemetry(loss, state)
