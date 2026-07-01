@@ -144,7 +144,7 @@ class Trainer:
                                       auto_refresh=False,
                                       description="Training (Epoch %d)" % epoch,
                                       total=len(data_loader), transient=True):
-            metrics, predictions = learner.train_step(*batch)
+            metrics, predictions = learner.train_step(batch_idx, epoch, *batch)
             loss = metrics['loss'].item()
 
             self.writer.set_step(epoch * len(data_loader) + batch_idx)
@@ -164,7 +164,7 @@ class Trainer:
                      datamodule.test_dataloader()
         metrics = defaultdict(lambda: [])
         for batch_idx, batch in enumerate(dataloader):
-            mets, predictions = learner.valid_step(*batch)
+            mets, predictions = learner.test_step(batch_idx, *batch)
             for k, v in mets.items():
                 metrics[k].append(v)
         return {k: np.mean(vs) for k, vs in metrics.items()}
@@ -236,7 +236,7 @@ class Trainer:
                                       auto_refresh=False,
                                       description="Validating (Epoch %d)" % epoch,
                                       total=len(data_loader), transient=True):
-            metrics, predictions = learner.valid_step(*batch)
+            metrics, predictions = learner.valid_step(batch_idx, epoch, *batch)
             loss = metrics['loss'].item()
 
             self.writer.set_step(epoch * len(data_loader) + batch_idx, 'valid')

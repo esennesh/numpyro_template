@@ -25,13 +25,13 @@ class ParamLearner:
         raise NotImplementedError
 
     @abstractmethod
-    def test_step(self, *args, **kwargs) -> Dict[str, float]:
+    def test_step(self, batch, *args, **kwargs) -> Dict[str, float]:
         raise NotImplementedError
 
     @abstractmethod
-    def train_step(self, *args, **kwargs) -> Tuple[Any, Dict[str, float]]:
+    def train_step(self, batch, epoch, *args, **kwargs) -> Tuple[Any, Dict[str, float]]:
         raise NotImplementedError
 
     @abstractmethod
-    def valid_step(self, *args, **kwargs) -> Dict[str, float]:
+    def valid_step(self, batch, epoch, *args, **kwargs) -> Dict[str, float]:
         raise NotImplementedError
