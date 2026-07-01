@@ -142,4 +142,4 @@ class MultiMnistDataModule(datamodule.DataModule):
 
     @property
     def shape(self) -> Tuple:
-        return (self.num_data, 1, self._canvas_side, self._canvas_side)
+        return (1, self._canvas_side, self._canvas_side)
