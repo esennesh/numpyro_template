@@ -315,10 +315,10 @@ class BatchGraphLearner(GraphicalModelLearner):
 
         return self._step_telemetry(loss, state)
 
-    def train_step(self, data, _, indices, *args, **kwargs):
+    def train_step(self, batch, epoch, data, _, indices, *args, **kwargs):
         return self._step(data, indices, stage="train")
 
-    def test_step(self, data, _, indices, *args, **kwargs):
+    def test_step(self, batch, data, _, indices, *args, **kwargs):
         return self._step(data, indices, stage="test")
 
     @cached_property
@@ -369,5 +369,5 @@ class BatchGraphLearner(GraphicalModelLearner):
             return loss, optim_states, next_rng, state
         return fn
 
-    def valid_step(self, data, _, indices, *args, **kwargs):
+    def valid_step(self, batch, epoch, data, _, indices, *args, **kwargs):
         return self._step(data, indices, stage="valid")
