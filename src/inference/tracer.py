@@ -29,16 +29,6 @@ def expected_value(site: Dict):
         return site["value"]
     return mean() if callable(mean) else mean
 
-def logmeanexp(value, axis=None, keepdims=False):
-    if axis is None:
-        size = value.size
-    elif isinstance(axis, tuple):
-        size = math.prod(value.shape[idx] for idx in axis)
-    else:
-        size = value.shape[axis]
-    return jax.scipy.special.logsumexp(value, axis=axis, keepdims=keepdims) -\
-        jnp.log(size)
-
 def trace_entry(site: Dict, log_p, log_q, observed):
     return {
         "value": site["value"],
@@ -80,7 +70,7 @@ class ELBOMixin(VariationalMixin):
 
 class IwaeMixin(ELBOMixin):
     def loss_fn(self, log_ws, traces):
-        return -logmeanexp(self.sum_log_weights(log_ws))
+        return -jax.nn.logmeanexp(self.sum_log_weights(log_ws))
 
 class ParticleTracer(ELBOMixin):
     def __init__(self, beta: float=1., num_particles: int=1):
@@ -321,9 +311,9 @@ class OvisTracer(ParticleTracer):
         advantages = rewards - values
 
         if self._include_aux:
-            log_evidence = logmeanexp(total_log_ws, axis=0)
+            log_evidence = jax.nn.logmeanexp(total_log_ws, axis=0)
         else:
-            log_evidence = logmeanexp(log_weights, axis=0)
+            log_evidence = jax.nn.logmeanexp(log_weights, axis=0)
 
         surrogates = jnp.zeros_like(log_weights)
         for name, site in traces.items():
@@ -339,7 +329,7 @@ class OvisTracer(ParticleTracer):
     @cached_property
     def objective(self):
         def fn(log_ws, axis=0):
-            return logmeanexp(log_ws, axis=axis, keepdims=True) -\
+            return jax.nn.logmeanexp(log_ws, axis=axis, keepdims=True) -\
                 jax.nn.softmax(log_ws, axis=axis)
         return fn
 
