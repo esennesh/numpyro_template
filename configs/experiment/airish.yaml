@@ -3,6 +3,7 @@
 defaults:
   - override /data: multi_mnist
   - override /guide: airish
+  - override /learner/tracer: ovis
   - override /logger: wandb
   - override /model: airish
 

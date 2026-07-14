@@ -1,0 +1,3 @@
+_target_: src.inference.tracer.OvisTracer
+num_particles: 4
+num_auxiliary: 2
