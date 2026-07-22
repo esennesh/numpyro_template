@@ -30,4 +30,5 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-numpyro = { git = "https://github.com/pyro-ppl/numpyro.git" }
+numpyro = { git = "https://github.com/esennesh/numpyro.git",
+            branch = "develop" }
