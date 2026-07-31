@@ -34,7 +34,7 @@ class Trainer:
                  log_step: int=10, metrics: List[str]=[],
                  monitor: Optional[str]=None, min_epochs: int=1,
                  resume: Optional[str]=None, save_period: int=1,
-                 tensorboard: bool=True, validate: bool=True):
+                 tensorboard: bool=True, validate: bool=True, writer=None):
         self.check_val_every_n_epoch = check_val_every_n_epoch
         self.checkpoint_dir = default_root_dir + "/saved/"
         self.default_root_dir = default_root_dir
@@ -61,7 +61,9 @@ class Trainer:
         self.epoch = 0
 
         # setup visualization writer instance
-        self.writer = TensorboardWriter(self.log_dir, self.logger, tensorboard)
+        if writer is None:
+            writer = TensorboardWriter(self.log_dir, self.logger, tensorboard)
+        self.writer = writer
 
         self.train_metrics = MetricTracker(*self.metrics, prefix="train",
                                            writer=self.writer)
@@ -87,6 +89,12 @@ class Trainer:
     @abstractproperty
     def metric_fns(self) -> List[str]:
         raise NotImplementedError
+
+    def close(self):
+        """
+        Flush and shut down the visualization writer(s).
+        """
+        self.writer.close()
 
     def _resume_checkpoint(self, learner, resume_path):
         """
@@ -167,7 +175,12 @@ class Trainer:
             mets, predictions = learner.test_step(batch_idx, *batch)
             for k, v in mets.items():
                 metrics[k].append(v)
-        return {k: np.mean(vs) for k, vs in metrics.items()}
+        metrics = {k: np.mean(vs) for k, vs in metrics.items()}
+
+        prefix = 'valid' if valid else 'test'
+        self.writer.log_metrics({prefix + '/' + k: v
+                                 for k, v in metrics.items()})
+        return metrics
 
     def train(self, learner: ParamLearner, datamodule: DataModule,
               ckpt_path: Optional[str]=None):
@@ -194,6 +207,7 @@ class Trainer:
             log = {'epoch': epoch}
             log.update(**{'train/'+k : v.item() for k, v in train_result.items()})
             log.update(**{'val/'+k : v.item() for k, v in valid_result.items()})
+            self.writer.log_metrics(log, step_metric='epoch')
 
             # evaluate model performance according to configured metric, save best checkpoint as model_best
             best = False
