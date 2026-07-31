@@ -30,4 +30,8 @@ wandb:
   log_images: True
   max_images: 16 # per `add_images` call, to keep uploads reasonable
   num_bins: 64 # resolution of parameter/prediction histograms
+  # how image data reaches W&B's [0, 255] intensities: an explicit [lo, hi] gets
+  # clamped to, keeping brightness comparable across batches (and matching what
+  # Tensorboard does), while null stretches each batch by its own extremes.
+  image_range: [0., 1.]
   enabled: True

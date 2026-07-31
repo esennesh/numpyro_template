@@ -2,7 +2,7 @@ import importlib
 from datetime import datetime
 import numpy as np
 from omegaconf import DictConfig
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 
 def _scalar(value):
@@ -143,10 +143,12 @@ class WandbWriter():
                  name: Optional[str]=None, notes: Optional[str]=None,
                  resume: Optional[str]=None, save_dir: Optional[str]=None,
                  tags=None, mode: str="online", enabled: bool=True,
+                 image_range: Optional[Sequence[float]]=(0., 1.),
                  log_images: bool=True, max_images: int=16, num_bins: int=64,
                  logger=None):
         self.run = None
         self.wandb = None
+        self.image_range = image_range
         self.log_images = log_images
         self.max_images = max_images
         self.num_bins = num_bins
@@ -202,11 +204,11 @@ class WandbWriter():
 
     def add_image(self, tag, data, *args, **kwargs):
         if self.log_images:
-            self._record('add_image', tag, self._image(data))
+            self._record('add_image', tag, self._image(self._quantize(data)))
 
     def add_images(self, tag, data, *args, **kwargs):
         if self.log_images:
-            images = np.asarray(data)[:self.max_images]
+            images = self._quantize(np.asarray(data)[:self.max_images])
             self._record('add_images', tag, [self._image(i) for i in images])
 
     def add_histogram(self, tag, data, *args, **kwargs):
@@ -277,6 +279,34 @@ class WandbWriter():
         if image.ndim == 3 and image.shape[-1] == 1:
             image = image[..., 0]
         return self.wandb.Image(image)
+
+    def _quantize(self, images):
+        """
+        Map image data onto the [0, 255] range of intensities that W&B expects,
+        rather than leaving it to normalize whatever it is handed (which it warns
+        about, and plans to stop doing).  A floating-point batch is clamped to
+        `image_range`, as Tensorboard would; when that range is None the batch is
+        instead stretched between its own extremes, which suits data whose scale
+        is not known ahead of time but costs comparability between batches.
+        """
+        images = np.asarray(images)
+        if np.issubdtype(images.dtype, np.integer):
+            return np.clip(images, 0, 255).astype(np.uint8)
+
+        images = images.astype(np.float32)
+        finite = images[np.isfinite(images)]
+        if self.image_range is not None:
+            lo, hi = float(self.image_range[0]), float(self.image_range[1])
+        elif finite.size:
+            lo, hi = float(finite.min()), float(finite.max())
+        else:
+            lo, hi = 0., 1.
+        if hi <= lo:
+            hi = lo + 1.
+
+        images = np.nan_to_num(images, nan=lo, posinf=hi, neginf=lo)
+        images = 255 * (images - lo) / (hi - lo)
+        return np.round(images).clip(0, 255).astype(np.uint8)
 
     def _record(self, name, tag, value):
         if self.run is None:
