@@ -66,7 +66,7 @@ def test(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     log_hyperparameters(object_dict)
 
     log.info("Starting testing!")
-    if cfg.ckpt_path == "" or not os.path.exists(cfg.ckpt_path):
+    if not cfg.ckpt_path or not os.path.exists(cfg.ckpt_path):
         log.warning("Best ckpt not found! Using current weights for testing...")
         cfg.ckpt_path = None
     test_metrics = trainer.test(learner, datamodule, ckpt_path=cfg.ckpt_path,
