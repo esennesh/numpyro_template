@@ -3,4 +3,11 @@
 defaults:
   - override /data: multi_mnist
   - override /guide: airish
+  - override /logger: wandb
   - override /model: airish
+
+tags: ["airish", "multi_mnist"]
+
+logger:
+  wandb:
+    group: airish
