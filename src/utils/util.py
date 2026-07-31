@@ -375,6 +375,27 @@ def get_metric_value(metric_dict: Dict[str, Any], metric_name: Optional[str]) ->
 
     return metric_value
 
+def log_hyperparameters(object_dict: Dict[str, Any]) -> None:
+    """Sends the hyperparameters of a run to every configured logging writer.
+
+    Note that the `logger` config group is deliberately left out, so that access
+    details (an API key in particular) never reach a logging backend.
+
+    :param object_dict: A dict containing the "cfg" of the run and the "writer"
+        returned by `src.logger.instantiate_writers`.
+    """
+    writer = object_dict.get("writer")
+    if writer is None or (hasattr(writer, "__len__") and not len(writer)):
+        log.warning("No logging writer found! Skipping hyperparameter logging...")
+        return
+
+    cfg = OmegaConf.to_container(object_dict["cfg"], resolve=True)
+    hparams = {k: v for k, v in cfg.items()
+               if k not in ("hydra", "logger", "paths")}
+    hparams["output_dir"] = cfg.get("paths", {}).get("output_dir")
+
+    writer.log_hyperparams(hparams)
+
 def print_config_tree(
     cfg: DictConfig,
     print_order: Sequence[str] = (
