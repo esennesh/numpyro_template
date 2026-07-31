@@ -17,12 +17,39 @@ from numpyro.infer.autoguide import AutoGuide
 from numpyro.infer.util import (get_importance_trace, helpful_support_errors,
                                 transform_fn)
 from omegaconf import DictConfig, OmegaConf, open_dict
+import os
 import rich
 import rich.syntax
 import rich.tree
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
+
+def first_env_dir(*names: str) -> str:
+    """Resolves to the value of the first of `names` naming a directory that exists.
+
+    Registered as the `env_dir` OmegaConf resolver, so that a config can prefer a
+    volume that only some machines have -- a pod's shared cluster storage, say --
+    and fall back to the project root elsewhere, from one environment shared by
+    both:
+
+        root_dir: ${env_dir:WORKSPACE_ROOT,PROJECT_ROOT}
+
+    :param names: Environment variables to try, in order of preference.
+    :return: The value of the first one set to an existing directory.
+    """
+    for name in names:
+        path = os.environ.get(name)
+        if path and Path(path).expanduser().is_dir():
+            return str(Path(path).expanduser())
+
+    tried = ", ".join("{}={}".format(n, os.environ.get(n)) for n in names)
+    raise ValueError(
+        f"None of these environment variables names an existing directory: {tried}"
+    )
+
+if not OmegaConf.has_resolver("env_dir"):
+    OmegaConf.register_new_resolver("env_dir", first_env_dir)
 
 def effective_sample_size(log_weights, normalized: bool=False, axis: int=0):
     log_total_weight = jax.nn.logsumexp(log_weights, axis=axis)
