@@ -1,0 +1,33 @@
+# https://docs.wandb.ai/
+
+wandb:
+  _target_: src.logger.WandbWriter
+
+  # --- access details -------------------------------------------------------- #
+  # Leave `api_key` null and export WANDB_API_KEY instead (rootutils loads the
+  # project's `.env` at startup): anything set here ends up in the printed and
+  # saved config tree, which is not where a credential belongs.
+  api_key: null
+  # base URL of the W&B server, for self-hosted/dedicated deployments
+  host: ${oc.env:WANDB_BASE_URL,null}
+  # user or team the run belongs to (null uses the default entity of the key)
+  entity: ${oc.env:WANDB_ENTITY,null}
+  project: ${oc.env:WANDB_PROJECT,numpyro-template}
+  # "online", "offline" (log locally, sync later) or "disabled"
+  mode: ${oc.env:WANDB_MODE,online}
+
+  # --- run identification ---------------------------------------------------- #
+  name: null # null lets W&B generate a run name
+  group: null # groups related runs, e.g. the members of a sweep
+  id: null # set together with `resume` to continue a previous run
+  job_type: ${task_name}
+  notes: null
+  resume: null # e.g. "allow", "must" or "never"
+  tags: ${tags}
+
+  # --- local storage and payload limits -------------------------------------- #
+  save_dir: ${paths.output_dir}
+  log_images: True
+  max_images: 16 # per `add_images` call, to keep uploads reasonable
+  num_bins: 64 # resolution of parameter/prediction histograms
+  enabled: True

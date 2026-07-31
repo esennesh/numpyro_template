@@ -1,0 +1,6 @@
+# https://www.tensorflow.org/tensorboard/
+
+tensorboard:
+  _target_: src.logger.TensorboardWriter
+  log_dir: ${paths.output_dir}
+  enabled: True

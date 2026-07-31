@@ -1,0 +1,5 @@
+# train with Tensorboard and Weights & Biases at once
+
+defaults:
+  - tensorboard
+  - wandb
