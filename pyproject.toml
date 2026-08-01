@@ -27,6 +27,7 @@ dependencies = [
     "tensorboardx>=2.6.4",
     "torch>=2.8.0",
     "torchvision>=0.23.0",
+    "wandb>=0.28.1",
 ]
 
 [tool.uv.sources]
