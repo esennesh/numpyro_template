@@ -416,9 +416,12 @@ def log_hyperparameters(object_dict: Dict[str, Any]) -> None:
         log.warning("No logging writer found! Skipping hyperparameter logging...")
         return
 
-    cfg = OmegaConf.to_container(object_dict["cfg"], resolve=True)
-    hparams = {k: v for k, v in cfg.items()
-               if k not in ("hydra", "logger", "paths")}
+    cfg = object_dict["cfg"].copy()
+    with open_dict(cfg):
+        cfg.pop("hydra", None)
+
+    cfg = OmegaConf.to_container(cfg, resolve=True)
+    hparams = {k: v for k, v in cfg.items() if k not in ("logger", "paths")}
     hparams["output_dir"] = cfg.get("paths", {}).get("output_dir")
 
     writer.log_hyperparams(hparams)
