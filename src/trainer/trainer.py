@@ -34,7 +34,7 @@ class Trainer:
                  log_step: int=10, metrics: List[str]=[],
                  monitor: Optional[str]=None, min_epochs: int=1,
                  resume: Optional[str]=None, save_period: int=1,
-                 tensorboard: bool=True, validate: bool=True):
+                 tensorboard: bool=True, validate: bool=True, writer=None):
         self.check_val_every_n_epoch = check_val_every_n_epoch
         self.checkpoint_dir = default_root_dir + "/saved/"
         self.default_root_dir = default_root_dir
@@ -61,16 +61,40 @@ class Trainer:
         self.epoch = 0
 
         # setup visualization writer instance
-        self.writer = TensorboardWriter(self.log_dir, self.logger, tensorboard)
+        if writer is None:
+            writer = TensorboardWriter(self.log_dir, self.logger, tensorboard)
+        self.writer = writer
 
         self.train_metrics = MetricTracker(*self.metrics, prefix="train",
                                            writer=self.writer)
         self.valid_metrics = MetricTracker(*self.metrics, prefix="valid",
                                            writer=self.writer)
 
+    def log_tensors(self, tensors, image_shape=None, prefix=""):
+        if prefix != "":
+            prefix += "/"
+
+        for k, v in tensors.items():
+            image_data = False
+            v = np.asarray(v)
+            if image_shape is not None:
+                assert len(image_shape) == 3
+                if v.shape[-len(image_shape):] == image_shape:
+                    images = v.reshape(-1, *image_shape)
+                    self.writer.add_images(prefix + k, images)
+                    image_data = True
+            if not image_data:
+                self.writer.add_histogram(prefix + k, v, bins="auto")
+
     @abstractproperty
     def metric_fns(self) -> List[str]:
         raise NotImplementedError
+
+    def close(self):
+        """
+        Flush and shut down the visualization writer(s).
+        """
+        self.writer.close()
 
     def _resume_checkpoint(self, learner, resume_path):
         """
@@ -112,7 +136,7 @@ class Trainer:
             np.save(best_path, state, allow_pickle=True)
             self.logger.info("Saving current best: model_best ...")
 
-    def _train_epoch(self, learner, data_loader, epoch):
+    def _train_epoch(self, learner, data_loader, epoch, data_shape=None):
         """
         Training logic for an epoch
 
@@ -125,14 +149,16 @@ class Trainer:
             log_step = self.log_step
         self.train_metrics.reset()
         for batch_idx, batch in track(enumerate(data_loader),
+                                      auto_refresh=False,
                                       description="Training (Epoch %d)" % epoch,
                                       total=len(data_loader), transient=True):
-            metrics = learner.train_step(*batch)
+            metrics, predictions = learner.train_step(batch_idx, epoch, *batch)
             loss = metrics['loss'].item()
 
             self.writer.set_step(epoch * len(data_loader) + batch_idx)
             for met in self.metrics:
                 self.train_metrics.update(met, metrics[met])
+            self.log_tensors(predictions, image_shape=data_shape)
 
         return self.train_metrics.result()
 
@@ -146,9 +172,15 @@ class Trainer:
                      datamodule.test_dataloader()
         metrics = defaultdict(lambda: [])
         for batch_idx, batch in enumerate(dataloader):
-            for k, v in learner.valid_step(*batch).items():
+            mets, predictions = learner.test_step(batch_idx, *batch)
+            for k, v in mets.items():
                 metrics[k].append(v)
-        return {k: np.mean(vs) for k, vs in metrics.items()}
+        metrics = {k: np.mean(vs) for k, vs in metrics.items()}
+
+        prefix = 'valid' if valid else 'test'
+        self.writer.log_metrics({prefix + '/' + k: v
+                                 for k, v in metrics.items()})
+        return metrics
 
     def train(self, learner: ParamLearner, datamodule: DataModule,
               ckpt_path: Optional[str]=None):
@@ -163,16 +195,19 @@ class Trainer:
         train_dataloader = datamodule.train_dataloader()
         valid_dataloader = datamodule.valid_dataloader()
         for epoch in range(self.epoch, self.epochs + 1):
-            train_result = self._train_epoch(learner, train_dataloader, epoch)
+            train_result = self._train_epoch(learner, train_dataloader, epoch,
+                                             data_shape=datamodule.shape)
             valid_result = {}
             if self.validate:
                 valid_result = self._valid_epoch(learner, valid_dataloader,
-                                                 epoch)
+                                                 epoch,
+                                                 data_shape=datamodule.shape)
 
             # save logged information into log dict
             log = {'epoch': epoch}
             log.update(**{'train/'+k : v.item() for k, v in train_result.items()})
             log.update(**{'val/'+k : v.item() for k, v in valid_result.items()})
+            self.writer.log_metrics(log, step_metric='epoch')
 
             # evaluate model performance according to configured metric, save best checkpoint as model_best
             best = False
@@ -202,7 +237,7 @@ class Trainer:
             if epoch % self.save_period == 0:
                 self._save_checkpoint(learner, epoch, save_best=best)
 
-    def _valid_epoch(self, learner, data_loader, epoch):
+    def _valid_epoch(self, learner, data_loader, epoch, data_shape=None):
         """
         Validate after training an epoch
 
@@ -212,14 +247,16 @@ class Trainer:
 
         self.valid_metrics.reset()
         for batch_idx, batch in track(enumerate(data_loader),
+                                      auto_refresh=False,
                                       description="Validating (Epoch %d)" % epoch,
                                       total=len(data_loader), transient=True):
-            metrics = learner.valid_step(*batch)
+            metrics, predictions = learner.valid_step(batch_idx, epoch, *batch)
             loss = metrics['loss'].item()
 
             self.writer.set_step(epoch * len(data_loader) + batch_idx, 'valid')
             for met in self.metrics:
                 self.valid_metrics.update(met, metrics[met])
+            self.log_tensors(predictions, image_shape=data_shape)
 
         # add histogram of parameters to the tensorboard
         for name, par in flatten(learner.parameters):

@@ -25,14 +25,16 @@ def decoder(hidden_dim, out_dim):
     )
 
 def mnist_model(batch, hidden_dim=400, z_dim=100):
-    batch = jnp.reshape(batch, (batch.shape[0], -1))
-    batch_dim, out_dim = jnp.shape(batch)
+    import math
+
+    batch_dim, image_shape = batch.shape[0], batch.shape[1:]
+    out_dim = math.prod(image_shape)
     decode = numpyro.module("decoder", decoder(hidden_dim, out_dim),
                             (batch_dim, z_dim))
     with numpyro.plate("batch", batch_dim):
         z = numpyro.sample("z", dist.Normal(0, 1).expand([z_dim]).to_event(1))
-        img_loc = decode(z)
-        return numpyro.sample("obs", dist.Bernoulli(img_loc).to_event(1),
+        img_loc = decode(z).reshape((batch_dim,) + image_shape)
+        return numpyro.sample("obs", dist.Bernoulli(img_loc).to_event(3),
                               obs=batch)
 
 def mnist_guide(batch, hidden_dim=400, z_dim=100):

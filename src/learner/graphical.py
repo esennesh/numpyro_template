@@ -15,7 +15,8 @@ from typing import Any, Dict
 from .learner import ParamLearner
 from src.data import DataModule
 from src.inference.tracer import ParticleTracer
-from src.utils import initialize_traces, is_autoguide, reconstruct
+from src.utils import (effective_sample_size, initialize_traces, is_autoguide,
+                       reconstruct)
 
 class GraphicalModelLearner(ParamLearner):
     def __init__(self, data_shape, guide, model, optim, rng,
@@ -60,7 +61,7 @@ class GraphicalModelLearner(ParamLearner):
         trace, mutables = self.tracer(rng, params, particle_params,
                                       reconstruct(self.model),
                                       self.guide, *args, **kwargs)
-        return {k: v[0] for k, v in trace.items()}
+        return {k: v["value"] for k, v in trace.items()}, trace
 
     @cached_property
     def _evaluate(self):
@@ -152,6 +153,11 @@ class GraphicalModelLearner(ParamLearner):
 
         from src.utils import get_model_relations
         self._relations = get_model_relations(init_model, args, kwargs)
+        if hasattr(self.tracer, "setup_relations"):
+            self.tracer.setup_relations(self._relations)
+        if hasattr(self.tracer, "setup_guide_relations"):
+            guide_relations = get_model_relations(init_guide, args, kwargs)
+            self.tracer.setup_guide_relations(guide_relations)
         for var, parents in self._relations["sample_sample"].items():
             self._graph.add_node(var)
             for par in parents:
@@ -191,7 +197,8 @@ class GraphicalModelLearner(ParamLearner):
         @jax.jit
         def fn(data, optim_state, rng):
             next_rng, rng = random.split(rng)
-            def loss_fn(params):
+            def loss_fn(unconstrained_params):
+                params = self._constrain_fn(unconstrained_params)
                 particle_params = jax.lax.stop_gradient(self.buffer_state)
                 particle_params.update({
                     param: value for param, value in params.items()
@@ -214,17 +221,31 @@ class GraphicalModelLearner(ParamLearner):
             return loss, optim_state, next_rng, state
         return fn
 
-    def test_step(self, data, *args, **kwargs):
+    def _step_telemetry(self, loss, state):
+        metrics = {"loss": loss}
+        metrics.update({
+            key: value for key, value in state.items()
+            if isinstance(value, jax.Array)
+        })
+        if "log_w" in metrics and "ess" not in metrics:
+            metrics["ess"] = jax.numpy.mean(
+                effective_sample_size(metrics["log_w"], normalized=True)
+            )
+        predictions = {k: v["ev"] for k, v in state["trace"].items()
+                       if v["observed"].all()}
+        return metrics, predictions
+
+    def test_step(self, batch, data, *args, **kwargs):
         loss, self._rng, state = self._evaluate(data, self.parameters, self.rng)
         self._buffer_state.update(state["mutables"])
-        return {"loss": loss, "log_w": state["log_w"]}
+        return self._step_telemetry(loss, state)
 
-    def train_step(self, data, *args, **kwargs):
+    def train_step(self, batch, epoch, data, *args, **kwargs):
         loss, self.optim_state, self._rng, state = self._update(
             data, self.optim_state, self.rng
         )
         self._buffer_state.update(state["mutables"])
-        return {"loss": loss, "log_w": state["log_w"]}
+        return self._step_telemetry(loss, state)
 
     def validate(self, loss: float):
         if self.scheduler:
@@ -232,7 +253,7 @@ class GraphicalModelLearner(ParamLearner):
                 updates=self.parameters, state=self.schedule_state, value=loss
             )
 
-    def valid_step(self, data, *args, **kwargs):
+    def valid_step(self, batch, epoch, data, *args, **kwargs):
         loss, self._rng, state = self._evaluate(data, self.parameters, self.rng)
         self._buffer_state.update(state["mutables"])
-        return {"loss": loss, "log_w": state["log_w"]}
+        return self._step_telemetry(loss, state)

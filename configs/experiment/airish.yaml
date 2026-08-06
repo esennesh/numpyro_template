@@ -1,0 +1,14 @@
+# @package _global_
+
+defaults:
+  - override /data: multi_mnist
+  - override /guide: airish
+  - override /learner/tracer: ovis
+  - override /logger: wandb
+  - override /model: airish
+
+tags: ["airish", "multi_mnist"]
+
+logger:
+  wandb:
+    group: airish

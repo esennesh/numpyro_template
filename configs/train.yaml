@@ -3,6 +3,7 @@ defaults:
   - data: mnist
   - guide: vae
   - learner: graphical
+  - logger: tensorboard
   - model: vae
   - trainer: default
   - paths: default

@@ -1,8 +1,9 @@
 import argparse
 import collections
 import hydra
+import jax
 import logging
-from numpyro import optim
+import numpyro
 from omegaconf import DictConfig
 import os
 import rootutils
@@ -27,8 +28,10 @@ rootutils.setup_root(__file__, indicator=".project-root", pythonpath=True)
 # ------------------------------------------------------------------------------------ #
 from src.data.datamodule import DataModule
 from src.learner import ParamLearner
+from src.logger import instantiate_writers
 from src.trainer import Trainer
-from src.utils import extras, get_metric_value, task_wrapper
+from src.utils import (extras, get_metric_value, log_hyperparameters,
+                       task_wrapper)
 
 log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
 @task_wrapper
@@ -46,16 +49,21 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
                                                     data_shape=datamodule.shape,
                                                     guide=guide, model=model)
 
+    log.info("Instantiating logging writers...")
+    writer = instantiate_writers(cfg.get("logger"), logger=log)
+
     log.info(f"Instantiating trainer <{cfg.trainer._target_}>")
-    trainer: BaseTrainer = hydra.utils.instantiate(cfg.trainer, logger=log)
+    trainer: BaseTrainer = hydra.utils.instantiate(cfg.trainer, logger=log,
+                                                   writer=writer)
 
     object_dict = {
         "cfg": cfg,
         "datamodule": datamodule,
         "learner": learner,
         "trainer": trainer,
+        "writer": writer,
     }
-    # log_hyperparameters(object_dict)
+    log_hyperparameters(object_dict)
 
     if cfg.get("train"):
         log.info("Starting training!")
@@ -85,6 +93,8 @@ def train(cfg: DictConfig) -> Tuple[Dict[str, Any], Dict[str, Any]]:
 
     # merge train and test metrics
     metric_dict = {**train_metrics, **test_metrics}
+
+    trainer.close()
 
     return metric_dict, object_dict
 

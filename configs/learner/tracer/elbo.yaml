@@ -1,0 +1,2 @@
+_target_: src.inference.tracer.ELBOTracer
+num_particles: 4

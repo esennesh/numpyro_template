@@ -108,6 +108,9 @@ input/
 /logs/
 datasets/
 
+# Weights & Biases run directories
+wandb/
+
 # editor, os cache directory
 .vscode/
 .idea/

@@ -9,6 +9,7 @@ Numpyro deep probabilistic programming made easi**er**.
 	* [Requirements](#requirements)
 	* [Features](#features)
 	* [Folder Structure](#folder-structure)
+	* [Experiment Tracking](#experiment-tracking)
 	* [License](#license)
 	* [Acknowledgements](#acknowledgements)
 
@@ -40,6 +41,7 @@ Numpyro deep probabilistic programming made easi**er**.
   ├── configs/ - Hydra configuration files for , models, guides, parametric monads, and trainers
   │   ├── data/ - data-module configurations
   │   ├── guide/ - variational guide program or sampler configurations
+  │   ├── logger/ - experiment-tracking configurations (Tensorboard, Weights & Biases)
   │   ├── model/ - generative model program configurations
   │   ├── monad/ - state monad configurations for RNG keys, mutable parameters and optimizer states, etc.
   |   └── trainer/ - trainer class configurations
@@ -58,6 +60,37 @@ Numpyro deep probabilistic programming made easi**er**.
       ├── util.py
       └── ...  
   ```
+
+## Experiment Tracking
+Both `src/train.py` and `src/test.py` log to whichever writers the `logger`
+config group selects, and each writer receives the same scalars, histograms and
+image batches:
+
+```bash
+python src/train.py                     # Tensorboard (the default)
+python src/train.py logger=wandb        # Weights & Biases
+python src/train.py logger=many_loggers # both at once
+python src/train.py '~logger'           # no experiment tracking
+```
+
+Weights & Biases access details live in `configs/logger/wandb.yaml` and are
+overridable from the command line like any other option, e.g.
+`logger=wandb logger.wandb.entity=my-team logger.wandb.project=vae logger.wandb.mode=offline`.
+They default to the standard `WANDB_*` environment variables, which `rootutils`
+loads from a `.env` file in the project root:
+
+```bash
+WANDB_API_KEY=...            # keep the key here, *not* in the config
+WANDB_ENTITY=my-team
+WANDB_PROJECT=numpyro-template
+WANDB_BASE_URL=...           # only for a self-hosted W&B server
+WANDB_MODE=online            # "offline" logs locally for a later `wandb sync`
+```
+
+Since W&B run steps must increase monotonically while training and validation
+each count steps within their own epoch, per-step scalars are plotted against
+the `train/step` and `valid/step` metrics, and epoch-level metrics
+(`train/…`, `val/…`) against `epoch`.
 
 ## License
 This project is licensed under the MIT License. See  LICENSE for more details

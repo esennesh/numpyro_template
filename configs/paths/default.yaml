@@ -1,10 +1,13 @@
 # path to root directory
-# this requires PROJECT_ROOT environment variable to exist
-# you can replace it with "." if you want the root to be the current working directory
-root_dir: ${oc.env:PROJECT_ROOT}
+# WORKSPACE_ROOT is used when it names a directory that exists, so that a run on
+# a pod can keep its data and logs on shared cluster storage, and PROJECT_ROOT
+# (set by rootutils) is the fallback everywhere that volume is absent
+root_dir: ${env_dir:WORKSPACE_ROOT,PROJECT_ROOT}
 
 # path to data directory
-data_dir: ${paths.root_dir}/data/
+# inputs travel with the source tree, so this stays at the project root even
+# when the outputs below go to shared cluster storage
+data_dir: ${env_dir:PROJECT_ROOT}/data/
 
 # path to logging directory
 log_dir: ${paths.root_dir}/logs/

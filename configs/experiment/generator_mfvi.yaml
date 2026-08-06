@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  - override /data: mnist
+  - override /guide: auto_normal
+  - override /learner: batchvi
+  - override /model: vae
+
+data:
+  drop_last: true
+  indexed: true
+
+trainer:
+  epochs: 1000
+  save_period: 200

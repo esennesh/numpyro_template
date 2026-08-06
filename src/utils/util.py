@@ -1,5 +1,9 @@
 from collections import namedtuple
 import jax
+import jax.numpy as jnp
+from jax.example_libraries.optimizers import (OptimizerState,
+                                              pack_optimizer_state,
+                                              unpack_optimizer_state)
 import json
 from importlib.util import find_spec
 import logging
@@ -13,12 +17,66 @@ from numpyro.infer.autoguide import AutoGuide
 from numpyro.infer.util import (get_importance_trace, helpful_support_errors,
                                 transform_fn)
 from omegaconf import DictConfig, OmegaConf, open_dict
+import os
 import rich
 import rich.syntax
 import rich.tree
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 log = logging.LoggerAdapter(logger=logging.getLogger(__name__))
+
+def first_env_dir(*names: str) -> str:
+    """Resolves to the value of the first of `names` naming a directory that exists.
+
+    Registered as the `env_dir` OmegaConf resolver, so that a config can prefer a
+    volume that only some machines have -- a pod's shared cluster storage, say --
+    and fall back to the project root elsewhere, from one environment shared by
+    both:
+
+        root_dir: ${env_dir:WORKSPACE_ROOT,PROJECT_ROOT}
+
+    :param names: Environment variables to try, in order of preference.
+    :return: The value of the first one set to an existing directory.
+    """
+    for name in names:
+        path = os.environ.get(name)
+        if path and Path(path).expanduser().is_dir():
+            return str(Path(path).expanduser())
+
+    tried = ", ".join("{}={}".format(n, os.environ.get(n)) for n in names)
+    raise ValueError(
+        f"None of these environment variables names an existing directory: {tried}"
+    )
+
+if not OmegaConf.has_resolver("env_dir"):
+    OmegaConf.register_new_resolver("env_dir", first_env_dir)
+
+def effective_sample_size(log_weights, normalized: bool=False, axis: int=0):
+    log_total_weight = jax.nn.logsumexp(log_weights, axis=axis)
+    log_total_squared_weight = jax.nn.logsumexp(2 * log_weights, axis=axis)
+    ess = jnp.exp(2 * log_total_weight - log_total_squared_weight)
+    if normalized:
+        ess = ess / log_weights.shape[axis]
+    return ess
+
+def flatten_optim_state(state):
+    if isinstance(state[1], OptimizerState):
+        optim_state = unpack_optimizer_state(state[1])
+        subtrees = {k: join.subtree for k, join in optim_state.items()}
+        subtrees = jax.tree.transpose(state[1].tree_def,
+                                      state[1].subtree_defs[0], subtrees)
+        return (state[0], subtrees)
+    return state
+
+def unflatten_optim_state(state, template):
+    if isinstance(template[1], OptimizerState):
+        unpacked_template = unpack_optimizer_state(template[1])
+        subtrees = jax.tree.transpose(template[1].subtree_defs[0],
+                                      template[1].tree_def, state[1])
+        subtrees = pack_optimizer_state({k: JoinPoint(v) for k, v
+                                         in subtrees.items()})
+        return (state[0], subtrees)
+    return state
 
 def is_autoguide(g):
     import abc
@@ -343,6 +401,30 @@ def get_metric_value(metric_dict: Dict[str, Any], metric_name: Optional[str]) ->
     log.info(f"Retrieved metric value! <{metric_name}={metric_value}>")
 
     return metric_value
+
+def log_hyperparameters(object_dict: Dict[str, Any]) -> None:
+    """Sends the hyperparameters of a run to every configured logging writer.
+
+    Note that the `logger` config group is deliberately left out, so that access
+    details (an API key in particular) never reach a logging backend.
+
+    :param object_dict: A dict containing the "cfg" of the run and the "writer"
+        returned by `src.logger.instantiate_writers`.
+    """
+    writer = object_dict.get("writer")
+    if writer is None or (hasattr(writer, "__len__") and not len(writer)):
+        log.warning("No logging writer found! Skipping hyperparameter logging...")
+        return
+
+    cfg = object_dict["cfg"].copy()
+    with open_dict(cfg):
+        cfg.pop("hydra", None)
+
+    cfg = OmegaConf.to_container(cfg, resolve=True)
+    hparams = {k: v for k, v in cfg.items() if k not in ("logger", "paths")}
+    hparams["output_dir"] = cfg.get("paths", {}).get("output_dir")
+
+    writer.log_hyperparams(hparams)
 
 def print_config_tree(
     cfg: DictConfig,
