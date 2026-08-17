@@ -1,7 +1,8 @@
 from abc import abstractmethod, abstractproperty
 import numpy as np
 from jax.tree_util import tree_map
-from torch.utils.data import Dataset, DataLoader, default_collate, random_split
+from torch.utils.data import (Dataset, DataLoader, default_collate,
+                              random_split, Subset)
 from typing import Any, Dict, Tuple
 
 def numpy_collate(batch):
@@ -25,13 +26,11 @@ class DataModule:
     def __init__(self, batch_size: int=64, data_dir: str="data/", drop_last=False,
                  collate_fn=numpy_collate, indexed: bool=False,
                  num_workers: int=1, pin_memory: bool=False, shuffle: bool=True,
-                 split_seed=None, validation_split: float=0.1):
+                 split_seed=42, validation_split: float=0.1):
         self.data_dir = data_dir
         self.validation_split = validation_split
         import torch
-        self.split_rng = None
-        if split_seed is not None:
-            self.split_rng = torch.Generator().manual_seed(split_seed)
+        self.split_rng = torch.Generator().manual_seed(split_seed)
 
         data_train, data_test = self.prepare_data()
         if indexed:
@@ -55,6 +54,9 @@ class DataModule:
 
     def setup(self, train_data, test_data, validation_split) -> Tuple[Dataset, Dataset, Dataset]:
         val_length = int(len(train_data) * validation_split)
+        if val_length == 0:
+            return train_data, Subset(train_data, []), test_data
+
         train_val_split = (len(train_data) - val_length, val_length)
         train_data, val_data = random_split(dataset=train_data,
                                             lengths=train_val_split,
